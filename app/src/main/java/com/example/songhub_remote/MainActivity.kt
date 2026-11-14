@@ -856,6 +856,8 @@ fun SongHubApp() {
     var appUpdateMessage by remember { mutableStateOf("") }
     var showAppUpdateDialog by remember { mutableStateOf(false) }
 
+    var appUpdateStatus by remember { mutableStateOf("Checking app version...") }
+
     // PENDING UPDATE INDICATORS
 
     var pendingNewSongCount by remember {
@@ -952,6 +954,42 @@ fun SongHubApp() {
 
             } finally {
                 checkingAppUpdate = false
+            }
+        }
+    }
+
+    // SILENTLY CHECK APP UPDATE WHEN SETTINGS OPENS
+
+    LaunchedEffect(showCatalogSettings) {
+        if (showCatalogSettings) {
+            appUpdateStatus = "Checking for app updates..."
+            try {
+                val remoteInfo = withContext(Dispatchers.IO) {
+                    fetchAppUpdateInfo()
+                }
+                val installedVersion = withContext(Dispatchers.IO) {
+                    getInstalledVersionCode(context)
+                }
+
+                if (remoteInfo.versionCode > installedVersion) {
+                    pendingAppVersionCode = remoteInfo.versionCode
+                    pendingAppVersionName = remoteInfo.versionName
+                    prefs.edit()
+                        .putInt(PREF_PENDING_APP_VERSION_CODE, remoteInfo.versionCode)
+                        .putString(PREF_PENDING_APP_VERSION_NAME, remoteInfo.versionName)
+                        .apply()
+                    appUpdateStatus = "NEW VERSION AVAILABLE: v${remoteInfo.versionName}"
+                } else {
+                    pendingAppVersionCode = 0
+                    pendingAppVersionName = ""
+                    prefs.edit()
+                        .remove(PREF_PENDING_APP_VERSION_CODE)
+                        .remove(PREF_PENDING_APP_VERSION_NAME)
+                        .apply()
+                    appUpdateStatus = "YOUR APP IS UP TO DATE (v${getInstalledVersionName(context)})"
+                }
+            } catch (e: Exception) {
+                appUpdateStatus = "Unable to check updates. Tap RETRY."
             }
         }
     }
@@ -2320,22 +2358,26 @@ fun SongHubApp() {
                         }
                     }
 
-                    Button(
-                        onClick = {
-                            checkForAppUpdate()
-                        },
-                        enabled = !checkingAppUpdate && !downloadingAppUpdate,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF34466F)
-                        )
-                    ) {
+                    if (pendingAppVersionCode > 0 || appUpdateStatus.startsWith("Unable")) {
+                        Button(
+                            onClick = { checkForAppUpdate() },
+                            enabled = !checkingAppUpdate && !downloadingAppUpdate,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF34466F)
+                            )
+                        ) {
+                            Text(
+                                if (checkingAppUpdate) "CHECKING APP UPDATE..." else
+                                    if (appUpdateStatus.startsWith("Unable")) "RETRY APP UPDATE CHECK" else "CHECK APP UPDATE",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
                         Text(
-                            if (checkingAppUpdate) {
-                                "CHECKING APP UPDATE..."
-                            } else {
-                                "CHECK APP UPDATE"
-                            },
+                            appUpdateStatus,
+                            color = if (appUpdateStatus.startsWith("YOUR APP IS UP TO DATE")) Accent else Muted,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
