@@ -662,31 +662,32 @@ private fun loadSongs(
         ?: throw Exception("Walang mabasang valid song catalog.")
 }
 
-// FAST STARTUP CATALOG: use app storage first, without waiting for SAF folder access.
+// FAST STARTUP CATALOG: return the saved catalog immediately.
+// Read the bundled asset only when no valid saved catalog exists.
 private fun loadFastLocalSongs(
     context: android.content.Context
 ): List<Song> {
-    val catalogs = mutableListOf<List<Song>>()
+    val cachedFile = File(context.filesDir, "songs_catalog.json")
 
-    try {
-        val cachedFile = File(context.filesDir, "songs_catalog.json")
-        if (cachedFile.exists()) {
-            catalogs.add(parseSongs(cachedFile.readText(Charsets.UTF_8)))
+    if (cachedFile.exists()) {
+        try {
+            val cachedSongs = parseSongs(
+                cachedFile.readText(Charsets.UTF_8)
+            )
+            if (cachedSongs.isNotEmpty()) {
+                return cachedSongs
+            }
+        } catch (_: Exception) {
+            // Fall back to the bundled catalog if the saved copy is invalid.
         }
-    } catch (_: Exception) {
     }
 
-    try {
-        val json = context.assets
-            .open("songs_catalog.json")
-            .bufferedReader()
-            .use { it.readText() }
-        catalogs.add(parseSongs(json))
-    } catch (_: Exception) {
-    }
+    val bundledJson = context.assets
+        .open("songs_catalog.json")
+        .bufferedReader()
+        .use { it.readText() }
 
-    return catalogs.maxByOrNull { it.size }
-        ?: throw Exception("Walang mabasang valid local song catalog.")
+    return parseSongs(bundledJson)
 }
 
 // CREATE INITIAL DOCUMENTS CATALOG
