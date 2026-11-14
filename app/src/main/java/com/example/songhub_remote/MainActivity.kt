@@ -837,15 +837,18 @@ fun SongHubApp() {
     var searchText by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }
 
-    val loadingTransition = rememberInfiniteTransition(label = "songLoading")
-    val loadingRotation by loadingTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = LinearEasing)
-        ),
-        label = "songLoadingRotation"
-    )
+    var loadingRotation by remember {
+        mutableFloatStateOf(0f)
+    }
+
+    // Drive the loader with a small coroutine tick so it keeps rotating
+    // even on devices where system animator duration is disabled.
+    LaunchedEffect(loading) {
+        while (loading) {
+            loadingRotation = (loadingRotation + 12f) % 360f
+            delay(16L)
+        }
+    }
 
     var socket by remember { mutableStateOf<WebSocket?>(null) }
     var connected by remember { mutableStateOf(false) }
@@ -932,6 +935,7 @@ fun SongHubApp() {
                 if (remoteInfo.versionCode > installedVersion) {
 
                     appUpdateInfo = remoteInfo
+                    appUpdateStatus = "NEW VERSION AVAILABLE: v${remoteInfo.versionName}"
 
                     pendingAppVersionCode = remoteInfo.versionCode
                     pendingAppVersionName = remoteInfo.versionName
