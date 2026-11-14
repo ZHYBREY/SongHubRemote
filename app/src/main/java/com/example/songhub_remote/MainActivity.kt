@@ -258,12 +258,16 @@ private fun downloadAppUpdate(
     val request = Request.Builder()
         .url(updateInfo.apkUrl)
         .header("User-Agent", "SongHub-Remote")
+        .header("Accept", "application/octet-stream")
+        .header("Cache-Control", "no-cache")
         .build()
 
     appUpdateHttpClient.newCall(request).execute().use { response ->
 
         if (!response.isSuccessful) {
-            throw Exception("APK download error: HTTP ${response.code}")
+            throw Exception(
+                "APK download error: HTTP ${response.code} | ${response.request.url}"
+            )
         }
 
         val body = response.body
