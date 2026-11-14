@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -3512,9 +3513,10 @@ fun CreatorPage(onBack: () -> Unit) {
                     Text("SONGHUB REMOTE", color = Color(0xFFFF78D2), fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Made to bring your music controls together.",
+                        "Thank you for downloading SongHub Remote! Your support means a lot to me. I hope you enjoy using the app, and thank you for being part of the SongHub community!",
                         color = Color(0xFFD8E2FF),
                         fontSize = 14.sp,
+                        fontStyle = FontStyle.Italic,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                     Spacer(Modifier.height(18.dp))
