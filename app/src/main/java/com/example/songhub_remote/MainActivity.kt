@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -33,6 +34,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
@@ -3389,7 +3393,7 @@ fun CreatorPage(onBack: () -> Unit) {
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 9000, easing = LinearEasing)
+            animation = tween(durationMillis = 4200, easing = LinearEasing)
         ),
         label = "neon-drift"
     )
@@ -3405,8 +3409,8 @@ fun CreatorPage(onBack: () -> Unit) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
-            val drift = phase * w * 0.45f
-            val pinkCenter = Offset(w * 0.18f + drift, h * 0.22f)
+            val wave = phase * 6.2831855f
+            val pinkCenter = Offset(w * (0.22f + 0.19f * kotlin.math.sin(wave)), h * (0.20f + 0.10f * kotlin.math.cos(wave)))
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(Color(0xCCFF36C9), Color(0x665E35FF), Color.Transparent),
@@ -3416,7 +3420,7 @@ fun CreatorPage(onBack: () -> Unit) {
                 radius = w * 0.72f,
                 center = pinkCenter
             )
-            val blueCenter = Offset(w * 0.82f - drift, h * 0.72f)
+            val blueCenter = Offset(w * (0.78f + 0.17f * kotlin.math.cos(wave + 1.2f)), h * (0.72f + 0.12f * kotlin.math.sin(wave + 1.2f)))
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(Color(0xAA00E5FF), Color(0x554A5BFF), Color.Transparent),
@@ -3427,8 +3431,8 @@ fun CreatorPage(onBack: () -> Unit) {
                 center = blueCenter
             )
             val greenCenter = Offset(
-                w * (0.48f + 0.08f * kotlin.math.sin(phase * 6.283f)),
-                h * 0.48f
+                w * (0.48f + 0.16f * kotlin.math.sin(wave + 2.1f)),
+                h * (0.48f + 0.13f * kotlin.math.cos(wave + 2.1f))
             )
             drawCircle(
                 brush = Brush.radialGradient(
@@ -3469,7 +3473,12 @@ fun CreatorPage(onBack: () -> Unit) {
                     .background(Color(0xFF10152B), RoundedCornerShape(76.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Text("CA", color = Color.White, fontSize = 52.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Image(
+                    painter = painterResource(id = R.drawable.creator_avatar),
+                    contentDescription = "SongHub creator photo",
+                    modifier = Modifier.size(150.dp).clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
             }
 
             Spacer(Modifier.height(26.dp))
@@ -3514,9 +3523,10 @@ fun CreatorPage(onBack: () -> Unit) {
                     Text("OPTIONAL DONATION", color = Color(0xFFFFD36E), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Thank you for supporting the project.",
+                        "Donation details are shared privately. Thank you for supporting SongHub!",
                         color = Color(0xFFD8E2FF),
-                        fontSize = 12.sp,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
