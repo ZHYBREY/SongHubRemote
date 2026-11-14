@@ -963,13 +963,20 @@ fun SongHubApp() {
                         .remove(PREF_PENDING_APP_VERSION_NAME)
                         .apply()
 
-                    appUpdateMessage =
-                        "Your app is up to date. (Build " + installedVersion + ")"
+                    appUpdateStatus = "Your app is up to date (v${getInstalledVersionName(context)})"
+                    appUpdateMessage = "Your app is up to date. (Build $installedVersion)"
                 }
 
             } catch (e: Exception) {
-                appUpdateMessage =
-                    "Update check failed: ${e.message}"
+                appUpdateInfo = null
+                pendingAppVersionCode = 0
+                pendingAppVersionName = ""
+                prefs.edit()
+                    .remove(PREF_PENDING_APP_VERSION_CODE)
+                    .remove(PREF_PENDING_APP_VERSION_NAME)
+                    .apply()
+                appUpdateStatus = "Unable to check updates. Tap RETRY."
+                appUpdateMessage = "Update check failed: ${e.message}"
 
             } finally {
                 checkingAppUpdate = false
@@ -991,6 +998,8 @@ fun SongHubApp() {
                 }
 
                 if (remoteInfo.versionCode > installedVersion) {
+                    appUpdateInfo = remoteInfo
+                    appUpdateMessage = ""
                     pendingAppVersionCode = remoteInfo.versionCode
                     pendingAppVersionName = remoteInfo.versionName
                     prefs.edit()
@@ -999,6 +1008,8 @@ fun SongHubApp() {
                         .apply()
                     appUpdateStatus = "NEW VERSION AVAILABLE: v${remoteInfo.versionName}"
                 } else {
+                    appUpdateInfo = null
+                    appUpdateMessage = ""
                     pendingAppVersionCode = 0
                     pendingAppVersionName = ""
                     prefs.edit()
@@ -1008,6 +1019,14 @@ fun SongHubApp() {
                     appUpdateStatus = "Your app is up to date (v${getInstalledVersionName(context)})"
                 }
             } catch (e: Exception) {
+                // Never leave an old red update badge after a failed check.
+                appUpdateInfo = null
+                pendingAppVersionCode = 0
+                pendingAppVersionName = ""
+                prefs.edit()
+                    .remove(PREF_PENDING_APP_VERSION_CODE)
+                    .remove(PREF_PENDING_APP_VERSION_NAME)
+                    .apply()
                 appUpdateStatus = "Unable to check updates. Tap RETRY."
             }
         }
@@ -2216,14 +2235,14 @@ fun SongHubApp() {
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                "Version 1.3",
+                                "Version ${getInstalledVersionName(context)}",
                                 color = Accent,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.ExtraBold
                             )
                         }
                         Text(
-                            "BUILD 4",
+                            "BUILD ${getInstalledVersionCode(context)}",
                             color = TextWhite,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
@@ -2481,14 +2500,6 @@ fun SongHubApp() {
                                 fontWeight = FontWeight.ExtraBold
                             )
                         }
-                    }
-
-                    if (appUpdateMessage.isNotBlank()) {
-                        Text(
-                            appUpdateMessage,
-                            color = Accent,
-                            fontSize = 12.sp
-                        )
                     }
 
                     Text(
