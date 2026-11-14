@@ -31,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -876,6 +877,7 @@ fun SongHubApp() {
     var selectedSong by remember { mutableStateOf<Song?>(null) }
 
     var showScoresPage by remember { mutableStateOf(false) }
+    var showCreatorPage by remember { mutableStateOf(false) }
 
     var scoreHistory by remember {
         mutableStateOf(loadScoreHistory(prefs))
@@ -918,9 +920,10 @@ fun SongHubApp() {
         )
     }
 
-    BackHandler(enabled = showShareCodeDialog || showScoresPage) {
+    BackHandler(enabled = showShareCodeDialog || showScoresPage || showCreatorPage) {
         when {
             showShareCodeDialog -> showShareCodeDialog = false
+            showCreatorPage -> showCreatorPage = false
             showScoresPage -> showScoresPage = false
         }
     }
@@ -1616,7 +1619,9 @@ fun SongHubApp() {
 
     // MAIN SONGBOOK PAGE
 
-    if (!showScoresPage) {
+    if (showCreatorPage) {
+        CreatorPage(onBack = { showCreatorPage = false })
+    } else if (!showScoresPage) {
 
         Column(
             modifier = Modifier
@@ -1694,6 +1699,20 @@ fun SongHubApp() {
                         fontSize = 11.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
+                }
+
+                Spacer(Modifier.width(7.dp))
+
+                Button(
+                    onClick = { showCreatorPage = true },
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFEC65B5),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("CREATOR", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
                 }
 
                 Spacer(Modifier.width(7.dp))
@@ -3359,5 +3378,152 @@ private fun ScoreSortButton(
             fontWeight = FontWeight.ExtraBold,
             maxLines = 1
         )
+    }
+}
+
+// CREATOR PAGE — animated neon smoke background
+@Composable
+fun CreatorPage(onBack: () -> Unit) {
+    val transition = rememberInfiniteTransition(label = "creator-neon")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 9000, easing = LinearEasing)
+        ),
+        label = "neon-drift"
+    )
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF090D24), Color(0xFF17113A), Color(0xFF071C32))
+                )
+            )
+        )
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val drift = phase * w * 0.45f
+            val pinkCenter = Offset(w * 0.18f + drift, h * 0.22f)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0xCCFF36C9), Color(0x665E35FF), Color.Transparent),
+                    center = pinkCenter,
+                    radius = w * 0.72f
+                ),
+                radius = w * 0.72f,
+                center = pinkCenter
+            )
+            val blueCenter = Offset(w * 0.82f - drift, h * 0.72f)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0xAA00E5FF), Color(0x554A5BFF), Color.Transparent),
+                    center = blueCenter,
+                    radius = w * 0.78f
+                ),
+                radius = w * 0.78f,
+                center = blueCenter
+            )
+            val greenCenter = Offset(
+                w * (0.48f + 0.08f * kotlin.math.sin(phase * 6.283f)),
+                h * 0.48f
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0x887CFF6B), Color.Transparent),
+                    center = greenCenter,
+                    radius = w * 0.42f
+                ),
+                radius = w * 0.42f,
+                center = greenCenter
+            )
+        }
+
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onBack) {
+                    Text("‹ BACK", color = Color(0xFF55F4E6), fontWeight = FontWeight.ExtraBold)
+                }
+                Spacer(Modifier.weight(1f))
+                Text("ABOUT", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
+                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(55.dp))
+            }
+
+            Spacer(Modifier.weight(0.8f))
+            Box(
+                modifier = Modifier.size(158.dp)
+                    .background(
+                        Brush.linearGradient(listOf(Color(0xFFFF42C6), Color(0xFF8B5CFF), Color(0xFF00E5FF))),
+                        RoundedCornerShape(80.dp)
+                    )
+                    .padding(4.dp)
+                    .background(Color(0xFF10152B), RoundedCornerShape(76.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("CA", color = Color.White, fontSize = 52.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+            }
+
+            Spacer(Modifier.height(26.dp))
+            Text(
+                "CATHLINO ABANTE",
+                color = Color.White,
+                fontSize = 27.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.5.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "CREATOR OF SONGHUB",
+                color = Color(0xFF62F7E8),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 2.sp
+            )
+            Spacer(Modifier.height(22.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xCC151D3A)),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("SONGHUB REMOTE", color = Color(0xFFFF78D2), fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Made to bring your music controls together.",
+                        color = Color(0xFFD8E2FF),
+                        fontSize = 14.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(Modifier.height(18.dp))
+                    HorizontalDivider(color = Color(0x6655F4E6))
+                    Spacer(Modifier.height(16.dp))
+                    Text("OPTIONAL DONATION", color = Color(0xFFFFD36E), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Thank you for supporting the project.",
+                        color = Color(0xFFD8E2FF),
+                        fontSize = 12.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Text("SONGHUB • MADE WITH PASSION", color = Color(0x99FFFFFF), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Spacer(Modifier.height(12.dp))
+        }
     }
 }
