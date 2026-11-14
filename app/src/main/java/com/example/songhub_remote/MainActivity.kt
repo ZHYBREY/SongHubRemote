@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -3398,6 +3399,7 @@ fun CreatorPage(onBack: () -> Unit) {
         ),
         label = "neon-drift"
     )
+    var showQrDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -3458,84 +3460,183 @@ fun CreatorPage(onBack: () -> Unit) {
                     Text("‹ BACK", color = Color(0xFF55F4E6), fontWeight = FontWeight.ExtraBold)
                 }
                 Spacer(Modifier.weight(1f))
-                Text("ABOUT", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
+                Text("CREATOR", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.width(55.dp))
             }
 
-            Spacer(Modifier.weight(0.8f))
+            Spacer(Modifier.weight(0.45f))
             Box(
-                modifier = Modifier.size(158.dp)
+                modifier = Modifier.size(148.dp)
                     .background(
                         Brush.linearGradient(listOf(Color(0xFFFF42C6), Color(0xFF8B5CFF), Color(0xFF00E5FF))),
-                        RoundedCornerShape(80.dp)
+                        CircleShape
                     )
                     .padding(4.dp)
-                    .background(Color(0xFF10152B), RoundedCornerShape(76.dp)),
+                    .background(Color(0xFF10152B), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.creator_avatar),
                     contentDescription = "SongHub creator photo",
-                    modifier = Modifier.size(150.dp).clip(CircleShape),
+                    modifier = Modifier.size(140.dp).clip(CircleShape),
                     contentScale = ContentScale.Crop
                 )
             }
 
-            Spacer(Modifier.height(26.dp))
+            Spacer(Modifier.height(18.dp))
             Text(
                 "CATHLINO ABANTE",
                 color = Color.White,
-                fontSize = 27.sp,
+                fontSize = 25.sp,
                 fontWeight = FontWeight.Black,
-                letterSpacing = 1.5.sp,
+                letterSpacing = 1.3.sp,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 "CREATOR OF SONGHUB",
                 color = Color(0xFF62F7E8),
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 2.sp
             )
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(16.dp))
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xCC151D3A)),
-                shape = RoundedCornerShape(20.dp)
+                colors = CardDefaults.cardColors(containerColor = Color(0xE817203F)),
+                shape = RoundedCornerShape(22.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(20.dp),
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 17.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("SONGHUB REMOTE", color = Color(0xFFFF78D2), fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                    Text(
+                        "A NOTE FROM THE CREATOR",
+                        color = Color(0xFFFF83D8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.5.sp
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "THANK YOU!",
+                        color = Color(0xFFFFD36E),
+                        fontSize = 25.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp
+                    )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Thank you for downloading SongHub Remote! Your support means a lot to me. I hope you enjoy using the app, and thank you for being part of the SongHub community!",
-                        color = Color(0xFFD8E2FF),
-                        fontSize = 14.sp,
+                        "Thank you for choosing SongHub Remote. I truly appreciate your support. I hope this app makes your music experience easier and more enjoyable. Keep enjoying the music, and welcome to the SongHub community!",
+                        color = Color(0xFFE2E9FF),
+                        fontSize = 13.sp,
                         fontStyle = FontStyle.Italic,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        lineHeight = 19.sp
                     )
-                    Spacer(Modifier.height(18.dp))
-                    HorizontalDivider(color = Color(0x6655F4E6))
-                    Spacer(Modifier.height(16.dp))
-                    Text("OPTIONAL DONATION", color = Color(0xFFFFD36E), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp)
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(15.dp))
                     Text(
-                        "Donation details are shared privately. Thank you for supporting SongHub!",
-                        color = Color(0xFFD8E2FF),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        "WITH GRATITUDE,",
+                        color = Color(0xFF62F7E8),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.4.sp
+                    )
+                    Text(
+                        "CATHLINO • SONGHUB",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    HorizontalDivider(color = Color(0x6655F4E6))
+                    Spacer(Modifier.height(13.dp))
+                    Text(
+                        "OPTIONAL DONATION",
+                        color = Color(0xFFFFD36E),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.5.sp
+                    )
+                    Spacer(Modifier.height(9.dp))
+                    Button(
+                        onClick = { showQrDialog = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF0878E8),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 28.dp, vertical = 11.dp)
+                    ) {
+                        Text("SEE QR CODE", fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Thank you for supporting SongHub!",
+                        color = Color(0xFFB9C6E8),
+                        fontSize = 11.sp,
+                        fontStyle = FontStyle.Italic
                     )
                 }
             }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.weight(0.6f))
             Text("SONGHUB • MADE WITH PASSION", color = Color(0x99FFFFFF), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+
+    if (showQrDialog) {
+        Dialog(onDismissRequest = { showQrDialog = false }) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = Color(0xFF111A35),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    Color(0xFF55F4E6)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "SUPPORT SONGHUB",
+                        color = Color(0xFFFFD36E),
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.2.sp
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Scan the GCash QR code",
+                        color = Color(0xFFD8E2FF),
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Image(
+                        painter = painterResource(id = R.drawable.gcash_qr),
+                        contentDescription = "GCash donation QR code",
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Thank you for supporting SongHub Remote!",
+                        color = Color(0xFF62F7E8),
+                        fontSize = 12.sp,
+                        fontStyle = FontStyle.Italic,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    TextButton(onClick = { showQrDialog = false }) {
+                        Text("CLOSE", color = Color(0xFFFF83D8), fontWeight = FontWeight.Black)
+                    }
+                }
+            }
         }
     }
 }
