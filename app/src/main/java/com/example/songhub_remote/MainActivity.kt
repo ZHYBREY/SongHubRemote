@@ -117,6 +117,16 @@ private fun getInstalledVersionCode(
     }
 }
 
+private fun getInstalledVersionName(
+    context: android.content.Context
+): String {
+    val info = context.packageManager.getPackageInfo(
+        context.packageName,
+        0
+    )
+    return info.versionName ?: "Unknown"
+}
+
 // COMPARE CATALOG SONG CODES AND SAVE PENDING COUNT
 
 private fun recordCatalogChanges(
@@ -2114,6 +2124,38 @@ fun SongHubApp() {
                         color = Muted,
                         fontSize = 13.sp
                     )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Color(0xFF17213D),
+                                RoundedCornerShape(10.dp)
+                            )
+                            .padding(horizontal = 13.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "CURRENT APP VERSION",
+                                color = Muted,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "Version ${getInstalledVersionName(context)}",
+                                color = Accent,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                        Text(
+                            "BUILD ${getInstalledVersionCode(context)}",
+                            color = TextWhite,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
                     Button(
                         onClick = { showShareCodeDialog = true },
