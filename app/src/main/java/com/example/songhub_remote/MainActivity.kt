@@ -1,17 +1,16 @@
 package com.example.songhub_remote
 
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
+import android.os.Bundle
 import android.graphics.Bitmap
 import android.net.Uri
+import android.content.Intent
 import android.os.Build
-import android.os.Bundle
 import android.provider.Settings
+import androidx.core.content.FileProvider
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -28,20 +27,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.qrcode.QRCodeWriter
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.*
@@ -51,20 +46,10 @@ import java.io.File
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-
-private const val CATALOG_URL =
-    "https://raw.githubusercontent.com/ZHYBREY/SongHub-Catalog/main/app/src/main/assets/songs_catalog.json"
-
-private const val APP_UPDATE_URL =
-    "https://raw.githubusercontent.com/ZHYBREY/SongHub-Catalog/main/app_update.json"
-
-private const val RELEASE_URL =
-    "https://github.com/ZHYBREY/SongHub-Catalog/releases/latest"
-
-private const val PREF_KNOWN_CATALOG_CODES = "known_catalog_codes"
-private const val PREF_PENDING_NEW_SONG_COUNT = "pending_new_song_count"
-private const val PREF_PENDING_APP_VERSION_CODE = "pending_app_version_code"
-private const val PREF_PENDING_APP_VERSION_NAME = "pending_app_version_name"
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 
 data class Song(
     val code: String,
@@ -82,433 +67,234 @@ data class ScoreEntry(
 )
 
 data class AppUpdateInfo(
-    val versionCode: Long,
+    val versionCode: Int,
     val versionName: String,
     val apkUrl: String,
     val releaseNotes: String
 )
 
-private val Navy = Color(0xFF101A32)
-private val TextWhite = Color(0xFFF4F6FF)
-private val Muted = Color(0xFF9EACCC)
-private val Accent = Color(0xFF63E6D1)
-private val AlertRed = Color(0xFFE65C70)
+private const val CATALOG_URL =
+    "https://raw.githubusercontent.com/ZHYBREY/SongHub-Catalog/main/app/src/main/assets/songs_catalog.json"
 
-private val songColors = listOf(
-    Color(0xFF5865D9),
-    Color(0xFF8B5CC7),
-    Color(0xFF287FA8),
-    Color(0xFFB66B43),
-    Color(0xFF398C78),
-    Color(0xFF9B567F),
-    Color(0xFF687DB8)
-)
+private const val APP_UPDATE_URL =
+    "https://raw.githubusercontent.com/ZHYBREY/SongHub-Catalog/main/app_update.json"
+
+private const val SHARE_CODE_URL =
+    "https://github.com/ZHYBREY/SongHubRemote/releases/latest"
+
+// UPDATE NOTIFICATION PREFERENCES
+
+private const val PREF_KNOWN_CATALOG_CODES = "known_catalog_codes"
+private const val PREF_PENDING_NEW_SONG_COUNT = "pending_new_song_count"
+private const val PREF_PENDING_APP_VERSION_CODE = "pending_app_version_code"
+private const val PREF_PENDING_APP_VERSION_NAME = "pending_app_version_name"
 
 private val catalogHttpClient = OkHttpClient.Builder()
-    .connectTimeout(20, TimeUnit.SECONDS)
-    .readTimeout(30, TimeUnit.SECONDS)
+    .connectTimeout(12, TimeUnit.SECONDS)
+    .readTimeout(45, TimeUnit.SECONDS)
+    .callTimeout(60, TimeUnit.SECONDS)
     .build()
 
 private val appUpdateHttpClient = OkHttpClient.Builder()
-    .connectTimeout(20, TimeUnit.SECONDS)
+    .connectTimeout(15, TimeUnit.SECONDS)
     .readTimeout(60, TimeUnit.SECONDS)
+    .callTimeout(180, TimeUnit.SECONDS)
     .build()
 
-private fun getInstalledVersionCode(context: Context): Long {
-    val info = if (Build.VERSION.SDK_INT >= 33) {
-        context.packageManager.getPackageInfo(
-            context.packageName,
-            PackageManager.PackageInfoFlags.of(0)
-        )
-    } else {
-        @Suppress("DEPRECATION")
-        context.packageManager.getPackageInfo(context.packageName, 0)
-    }
+private fun getInstalledVersionCode(
+    context: android.content.Context
+): Int {
+    val info = context.packageManager.getPackageInfo(
+        context.packageName,
+        0
+    )
 
     return if (Build.VERSION.SDK_INT >= 28) {
-        info.longVersionCode
+        info.longVersionCode.toInt()
     } else {
         @Suppress("DEPRECATION")
-        info.versionCode.toLong()
+        info.versionCode
     }
 }
 
-private fun getInstalledVersionName(context: Context): String {
-    val info = if (Build.VERSION.SDK_INT >= 33) {
-        context.packageManager.getPackageInfo(
-            context.packageName,
-            PackageManager.PackageInfoFlags.of(0)
-        )
-    } else {
-        @Suppress("DEPRECATION")
-        context.packageManager.getPackageInfo(context.packageName, 0)
-    }
-
-    return info.versionName ?: "Unknown"
-}
-
-private fun formatSongNumber(code: String): String {
-    return code.trim().ifBlank { "----" }
-}
-
-private fun sortSongsAlphabetically(songs: List<Song>): List<Song> {
-    return songs.sortedWith(
-        compareBy<Song> { it.title.lowercase(Locale.ROOT) }
-            .thenBy { it.code }
-    )
-}
-
-private fun parseSongs(json: String): List<Song> {
-    val root = org.json.JSONTokener(json).nextValue()
-    val array = when (root) {
-        is JSONArray -> root
-        is JSONObject -> {
-            when {
-                root.optJSONArray("songs") != null -> root.getJSONArray("songs")
-                root.optJSONArray("data") != null -> root.getJSONArray("data")
-                root.optJSONArray("value") != null -> root.getJSONArray("value")
-                else -> JSONArray()
-            }
-        }
-        else -> JSONArray()
-    }
-
-    val result = LinkedHashMap<String, Song>()
-
-    for (i in 0 until array.length()) {
-        val item = array.optJSONObject(i) ?: continue
-
-        val code = (
-                item.optString("code")
-                    .ifBlank { item.optString("number") }
-                    .ifBlank { item.optString("songNumber") }
-                ).trim()
-
-        val title = (
-                item.optString("title")
-                    .ifBlank { item.optString("name") }
-                ).trim()
-
-        val artist = (
-                item.optString("artist")
-                    .ifBlank { item.optString("singer") }
-                ).trim()
-
-        if (code.isNotBlank() && title.isNotBlank()) {
-            result[code] = Song(
-                code = code,
-                title = title,
-                artist = artist
-            )
-        }
-    }
-
-    return result.values.toList()
-}
-
-private fun saveInternalCatalog(context: Context, json: String) {
-    val parsed = parseSongs(json)
-    require(parsed.isNotEmpty()) {
-        "Walang valid na kanta sa catalog."
-    }
-
-    val file = File(context.filesDir, "songs_catalog.json")
-    val backup = File(context.filesDir, "songs_catalog_backup.json")
-
-    if (file.exists()) {
-        file.copyTo(backup, overwrite = true)
-    }
-
-    file.writeText(json)
-}
-
-private fun loadSongs(
-    context: Context,
-    folderUri: Uri?
-): List<Song> {
-    val candidates = mutableListOf<List<Song>>()
-
-    if (folderUri != null) {
-        try {
-            val directory = getCatalogDirectory(context, folderUri)
-            val file = directory?.findFile("songs_catalog.json")
-                ?: directory?.findFile("catalog.json")
-
-            if (file != null) {
-                context.contentResolver.openInputStream(file.uri)?.use {
-                    candidates.add(parseSongs(it.bufferedReader().readText()))
-                }
-            }
-        } catch (_: Exception) {
-        }
-    }
-
-    try {
-        val internal = File(context.filesDir, "songs_catalog.json")
-        if (internal.exists()) {
-            candidates.add(parseSongs(internal.readText()))
-        }
-    } catch (_: Exception) {
-    }
-
-    try {
-        context.assets.open("songs_catalog.json").use {
-            candidates.add(parseSongs(it.bufferedReader().readText()))
-        }
-    } catch (_: Exception) {
-    }
-
-    return candidates
-        .filter { it.isNotEmpty() }
-        .maxByOrNull { it.size }
-        ?: emptyList()
-}
-
-private fun getCatalogDirectory(
-    context: Context,
-    treeUri: Uri,
-    create: Boolean = false
-): DocumentFile? {
-    val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return null
-
-    if (tree.name.equals("SongHub", true)) {
-        return tree
-    }
-
-    return tree.findFile("SongHub")
-        ?: if (create) tree.createDirectory("SongHub") else null
-}
-
-private fun ensureCatalogFile(
-    context: Context,
-    parentUri: Uri
-) {
-    val directory = getCatalogDirectory(
-        context,
-        parentUri,
-        create = true
-    ) ?: throw Exception("Hindi mabuksan ang SongHub folder.")
-
-    if (
-        directory.findFile("songs_catalog.json") == null &&
-        directory.findFile("catalog.json") == null
-    ) {
-        val file = directory.createFile(
-            "application/json",
-            "songs_catalog.json"
-        ) ?: throw Exception("Hindi makagawa ng catalog file.")
-
-        context.contentResolver.openOutputStream(file.uri)?.use {
-            it.write("[]".toByteArray())
-        }
-    }
-}
-
-private fun writeDocumentFile(
-    context: Context,
-    file: DocumentFile,
-    content: String
-) {
-    context.contentResolver.openOutputStream(file.uri, "wt")?.use {
-        it.write(content.toByteArray())
-    } ?: throw Exception("Hindi maisulat ang file.")
-}
-
-private fun replaceCatalog(
-    context: Context,
-    folderUri: Uri,
-    json: String
-) {
-    val parsed = parseSongs(json)
-    require(parsed.isNotEmpty()) {
-        "Walang valid na kanta sa JSON."
-    }
-
-    val directory = getCatalogDirectory(
-        context,
-        folderUri,
-        create = true
-    ) ?: throw Exception("Hindi makita ang SongHub folder.")
-
-    val current = directory.findFile("songs_catalog.json")
-    val backup = directory.findFile("songs_catalog_backup.json")
-
-    if (current != null) {
-        val oldText = context.contentResolver
-            .openInputStream(current.uri)
-            ?.bufferedReader()
-            ?.readText()
-
-        if (oldText != null) {
-            val backupFile = backup
-                ?: directory.createFile(
-                    "application/json",
-                    "songs_catalog_backup.json"
-                )
-
-            if (backupFile != null) {
-                writeDocumentFile(context, backupFile, oldText)
-            }
-        }
-
-        writeDocumentFile(context, current, json)
-    } else {
-        val newFile = directory.createFile(
-            "application/json",
-            "songs_catalog.json"
-        ) ?: throw Exception("Hindi makagawa ng catalog file.")
-
-        writeDocumentFile(context, newFile, json)
-    }
-
-    saveInternalCatalog(context, json)
-}
-
-private suspend fun updateOnlineCatalog(
-    context: Context,
-    folderUri: Uri?
-): List<Song> = withContext(Dispatchers.IO) {
-    val request = Request.Builder()
-        .url("$CATALOG_URL?updated=${System.currentTimeMillis()}")
-        .header("Cache-Control", "no-cache")
-        .build()
-
-    catalogHttpClient.newCall(request).execute().use { response ->
-        if (!response.isSuccessful) {
-            throw Exception("Catalog server error: ${response.code}")
-        }
-
-        val json = response.body?.string()
-            ?: throw Exception("Walang natanggap na catalog.")
-
-        val parsed = parseSongs(json)
-
-        if (parsed.isEmpty()) {
-            throw Exception("Walang valid na kanta sa online catalog.")
-        }
-
-        if (folderUri != null) {
-            replaceCatalog(context, folderUri, json)
-        } else {
-            saveInternalCatalog(context, json)
-        }
-
-        parsed
-    }
-}
+// COMPARE CATALOG SONG CODES AND SAVE PENDING COUNT
 
 private fun recordCatalogChanges(
-    context: Context,
-    songs: List<Song>
+    prefs: android.content.SharedPreferences,
+    newSongs: List<Song>
 ): Int {
-    val prefs = context.getSharedPreferences("songhub_settings", 0)
-    val oldCodes = prefs.getStringSet(
+    val latestCodes = newSongs.map { it.code }.toSet()
+    val storedCodes = prefs.getStringSet(
         PREF_KNOWN_CATALOG_CODES,
-        emptySet()
-    ) ?: emptySet()
+        null
+    )
 
-    val newCodes = songs.map { it.code }.toSet()
-    val added = if (oldCodes.isEmpty()) {
+    // First successful fetch establishes the baseline.
+    // Existing songs are not counted as new.
+    val newCount = if (storedCodes == null) {
         0
     } else {
-        (newCodes - oldCodes).size
+        (latestCodes - storedCodes).size
     }
 
+    val currentPending = prefs.getInt(
+        PREF_PENDING_NEW_SONG_COUNT,
+        0
+    )
+
+    val nextPending = currentPending + newCount
+
     prefs.edit()
-        .putStringSet(PREF_KNOWN_CATALOG_CODES, newCodes)
+        .putStringSet(
+            PREF_KNOWN_CATALOG_CODES,
+            latestCodes.toMutableSet()
+        )
         .putInt(
             PREF_PENDING_NEW_SONG_COUNT,
-            prefs.getInt(PREF_PENDING_NEW_SONG_COUNT, 0) + added
+            nextPending
         )
         .apply()
 
-    return added
+    return nextPending
 }
 
-private suspend fun fetchAppUpdateInfo(): AppUpdateInfo? =
-    withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url("$APP_UPDATE_URL?updated=${System.currentTimeMillis()}")
-            .header("Cache-Control", "no-cache")
-            .build()
-
-        appUpdateHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw Exception("Update server error: ${response.code}")
-            }
-
-            val json = JSONObject(
-                response.body?.string()
-                    ?: throw Exception("Walang update information.")
-            )
-
-            val versionCode = json.optLong("versionCode", 0L)
-            val versionName = json.optString("versionName", "Unknown")
-            val apkUrl = json.optString("apkUrl", "")
-            val releaseNotes = json.optString("releaseNotes", "No release notes.")
-
-            if (versionCode <= 0L || !apkUrl.startsWith("https://")) {
-                throw Exception("Invalid app update information.")
-            }
-
-            AppUpdateInfo(
-                versionCode,
-                versionName,
-                apkUrl,
-                releaseNotes
-            )
+// GENERATE SHARE CODE QR
+private fun createShareCodeQr(content: String, size: Int = 720): Bitmap {
+    val hints = hashMapOf<EncodeHintType, Any>(
+        EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M,
+        EncodeHintType.MARGIN to 2
+    )
+    val matrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, size, size, hints)
+    return Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).apply {
+        for (x in 0 until size) for (y in 0 until size) {
+            setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
         }
     }
+}
 
-private suspend fun downloadAppUpdate(
-    context: Context,
-    updateInfo: AppUpdateInfo
-): File = withContext(Dispatchers.IO) {
-    require(updateInfo.apkUrl.startsWith("https://")) {
-        "Invalid APK download URL."
-    }
+// CHECK GITHUB APP UPDATE MANIFEST
 
-    val directory = File(context.cacheDir, "updates")
-    if (!directory.exists()) directory.mkdirs()
-
-    val temporaryFile = File(directory, "SongHubRemote.apk.tmp")
-    val apkFile = File(directory, "SongHubRemote.apk")
+private fun fetchAppUpdateInfo(): AppUpdateInfo {
+    val url = "$APP_UPDATE_URL?t=${System.currentTimeMillis()}"
 
     val request = Request.Builder()
-        .url(updateInfo.apkUrl)
+        .url(url)
+        .header("Cache-Control", "no-cache, no-store")
+        .header("Pragma", "no-cache")
+        .header("User-Agent", "SongHub-Remote")
         .build()
 
     appUpdateHttpClient.newCall(request).execute().use { response ->
+
         if (!response.isSuccessful) {
-            throw Exception("APK download failed: ${response.code}")
+            throw Exception("GitHub error: HTTP ${response.code}")
         }
 
-        val body = response.body ?: throw Exception("Empty APK file.")
+        val body = response.body?.string()
+            ?: throw Exception("Walang update information na natanggap.")
+
+        val json = JSONObject(body)
+
+        val versionCode = json.optInt("versionCode", 0)
+        val versionName = json.optString("versionName", "")
+        val apkUrl = json.optString("apkUrl", "")
+        val releaseNotes = json.optString(
+            "releaseNotes",
+            "SongHub Remote update"
+        )
+
+        if (versionCode <= 0 || versionName.isBlank()) {
+            throw Exception("Invalid app_update.json.")
+        }
+
+        if (
+            apkUrl.isBlank() ||
+            !apkUrl.startsWith("https://")
+        ) {
+            throw Exception(
+                "Hindi pa valid ang APK link sa app_update.json."
+            )
+        }
+
+        return AppUpdateInfo(
+            versionCode = versionCode,
+            versionName = versionName,
+            apkUrl = apkUrl,
+            releaseNotes = releaseNotes
+        )
+    }
+}
+
+// DOWNLOAD APK UPDATE
+
+private fun downloadAppUpdate(
+    context: android.content.Context,
+    updateInfo: AppUpdateInfo
+): File {
+
+    if (!updateInfo.apkUrl.startsWith("https://")) {
+        throw Exception("Invalid APK download URL.")
+    }
+
+    val updateFolder = File(context.cacheDir, "updates")
+
+    if (!updateFolder.exists() && !updateFolder.mkdirs()) {
+        throw Exception("Hindi makagawa ng update folder.")
+    }
+
+    val apkFile = File(updateFolder, "SongHubRemote.apk")
+    val tempFile = File(updateFolder, "SongHubRemote.apk.tmp")
+
+    val request = Request.Builder()
+        .url(updateInfo.apkUrl)
+        .header("User-Agent", "SongHub-Remote")
+        .build()
+
+    appUpdateHttpClient.newCall(request).execute().use { response ->
+
+        if (!response.isSuccessful) {
+            throw Exception("APK download error: HTTP ${response.code}")
+        }
+
+        val body = response.body
+            ?: throw Exception("Walang APK file na natanggap.")
+
+        if (body.contentLength() == 0L) {
+            throw Exception("Empty APK file.")
+        }
 
         body.byteStream().use { input ->
-            temporaryFile.outputStream().use { output ->
+            tempFile.outputStream().use { output ->
                 input.copyTo(output)
             }
         }
     }
 
-    if (!temporaryFile.exists() || temporaryFile.length() < 100_000L) {
-        temporaryFile.delete()
-        throw Exception("Invalid downloaded APK.")
+    if (!tempFile.exists() || tempFile.length() < 100_000L) {
+        tempFile.delete()
+        throw Exception("Invalid o incomplete APK download.")
     }
 
-    if (apkFile.exists()) apkFile.delete()
-
-    if (!temporaryFile.renameTo(apkFile)) {
-        temporaryFile.copyTo(apkFile, overwrite = true)
-        temporaryFile.delete()
+    if (apkFile.exists()) {
+        apkFile.delete()
     }
 
-    apkFile
+    if (!tempFile.renameTo(apkFile)) {
+        tempFile.copyTo(apkFile, overwrite = true)
+        tempFile.delete()
+    }
+
+    if (!apkFile.exists() || apkFile.length() < 100_000L) {
+        throw Exception("Hindi na-save nang maayos ang APK.")
+    }
+
+    return apkFile
 }
 
+// INSTALL DOWNLOADED APK
+
 private fun installDownloadedApk(
-    context: Context,
+    context: android.content.Context,
     apkFile: File
 ) {
     if (!apkFile.exists()) {
@@ -528,7 +314,7 @@ private fun installDownloadedApk(
         apkFile
     )
 
-    val intent = Intent(Intent.ACTION_VIEW).apply {
+    val installIntent = Intent(Intent.ACTION_VIEW).apply {
         setDataAndType(
             apkUri,
             "application/vnd.android.package-archive"
@@ -537,34 +323,39 @@ private fun installDownloadedApk(
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
-    context.startActivity(intent)
+    context.startActivity(installIntent)
 }
 
-private fun loadScoreHistory(prefs: android.content.SharedPreferences): List<ScoreEntry> {
-    val raw = prefs.getString("score_history", "[]") ?: "[]"
-    val array = try {
-        JSONArray(raw)
-    } catch (_: Exception) {
-        JSONArray()
-    }
-
-    val result = mutableListOf<ScoreEntry>()
-
-    for (i in 0 until array.length()) {
-        val item = array.optJSONObject(i) ?: continue
-        result.add(
-            ScoreEntry(
-                id = item.optString("id", UUID.randomUUID().toString()),
-                code = item.optString("code"),
-                title = item.optString("title"),
-                artist = item.optString("artist"),
-                score = item.optInt("score"),
-                playedAt = item.optLong("playedAt")
-            )
+private fun loadScoreHistory(
+    prefs: android.content.SharedPreferences
+): List<ScoreEntry> {
+    return try {
+        val array = JSONArray(
+            prefs.getString("score_history", "[]") ?: "[]"
         )
-    }
 
-    return result
+        buildList {
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+
+                add(
+                    ScoreEntry(
+                        id = item.optString(
+                            "id",
+                            UUID.randomUUID().toString()
+                        ),
+                        code = item.optString("code"),
+                        title = item.optString("title", "Unknown"),
+                        artist = item.optString("artist"),
+                        score = item.optInt("score", 0),
+                        playedAt = item.optLong("playedAt", 0L)
+                    )
+                )
+            }
+        }
+    } catch (_: Exception) {
+        emptyList()
+    }
 }
 
 private fun saveScoreHistory(
@@ -591,45 +382,374 @@ private fun saveScoreHistory(
         .apply()
 }
 
-private fun createQrBitmap(
-    content: String,
-    size: Int = 720
-): Bitmap {
-    val hints = hashMapOf<EncodeHintType, Any>(
-        EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M,
-        EncodeHintType.MARGIN to 2
-    )
+private val Navy = Color(0xFF10152B)
+private val TextWhite = Color.White
+private val Muted = Color(0xFFB5BED5)
+private val Accent = Color(0xFF42E8D4)
+private val AlertRed = Color(0xFFE45D68)
 
-    val matrix = QRCodeWriter().encode(
-        content,
-        BarcodeFormat.QR_CODE,
-        size,
-        size,
-        hints
-    )
+private val songColors = listOf(
+    Color(0xFF16C7C7),
+    Color(0xFF9565F5),
+    Color(0xFF438BFA),
+    Color(0xFFEC65B5),
+    Color(0xFFFFA64D),
+    Color(0xFF42B883)
+)
 
-    return Bitmap.createBitmap(
-        size,
-        size,
-        Bitmap.Config.ARGB_8888
-    ).apply {
-        for (x in 0 until size) {
-            for (y in 0 until size) {
-                setPixel(
-                    x,
-                    y,
-                    if (matrix[x, y]) {
-                        android.graphics.Color.BLACK
-                    } else {
-                        android.graphics.Color.WHITE
-                    }
+private val alphabet = ('A'..'Z').map { it.toString() }
+
+private fun formatSongNumber(code: String): String {
+    return code.toIntOrNull()?.toString()?.padStart(6, '0') ?: code
+}
+
+private fun sortSongsAlphabetically(songs: List<Song>): List<Song> {
+    return songs.sortedWith(
+        compareBy<Song> {
+            val first = it.title.trim().firstOrNull()?.uppercaseChar()
+            if (first != null && first in 'A'..'Z') 0 else 1
+        }.thenBy {
+            it.title.trim().lowercase(Locale.ROOT)
+        }
+    )
+}
+
+// PARSE NORMAL AND NESTED JSON CATALOGS
+
+private fun parseSongs(json: String): List<Song> {
+    val trimmed = json.trim()
+    val result = LinkedHashMap<String, Song>()
+
+    fun addSong(item: JSONObject) {
+        val code = item.optString("code").trim()
+        val title = item.optString("title").trim()
+        val artist = item.optString("artist").trim()
+
+        if (code.isNotBlank() && title.isNotBlank()) {
+            if (!result.containsKey(code)) {
+                result[code] = Song(
+                    code = code,
+                    title = title,
+                    artist = artist
                 )
             }
         }
     }
+
+    fun addSongArray(array: JSONArray) {
+        for (i in 0 until array.length()) {
+            val item = array.optJSONObject(i) ?: continue
+
+            val nested = item.optJSONArray("value")
+                ?: item.optJSONArray("songs")
+                ?: item.optJSONArray("data")
+
+            if (nested != null) {
+                addSongArray(nested)
+            } else {
+                addSong(item)
+            }
+        }
+    }
+
+    when {
+        trimmed.startsWith("[") -> {
+            addSongArray(JSONArray(trimmed))
+        }
+
+        trimmed.startsWith("{") -> {
+            val root = JSONObject(trimmed)
+
+            val array = root.optJSONArray("value")
+                ?: root.optJSONArray("songs")
+                ?: root.optJSONArray("data")
+
+            if (array != null) {
+                addSongArray(array)
+            } else {
+                throw Exception(
+                    "Hindi makita ang song list sa JSON object."
+                )
+            }
+        }
+
+        else -> {
+            throw Exception("Invalid JSON format.")
+        }
+    }
+
+    require(result.isNotEmpty()) {
+        "Walang valid songs sa JSON file."
+    }
+
+    return result.values.toList()
+}
+
+// SAVE DOWNLOADED CATALOG TO INTERNAL STORAGE
+
+private fun saveInternalCatalog(
+    context: android.content.Context,
+    json: String
+) {
+    parseSongs(json)
+
+    val target = File(context.filesDir, "songs_catalog.json")
+    val temp = File(context.filesDir, "songs_catalog.json.tmp")
+    val backup = File(context.filesDir, "songs_catalog_backup.json")
+
+    try {
+        temp.writeText(json, Charsets.UTF_8)
+        parseSongs(temp.readText(Charsets.UTF_8))
+
+        if (target.exists()) {
+            target.copyTo(backup, overwrite = true)
+        }
+
+        temp.copyTo(target, overwrite = true)
+        parseSongs(target.readText(Charsets.UTF_8))
+    } finally {
+        temp.delete()
+    }
+}
+
+// DOWNLOAD LATEST CATALOG FROM GITHUB
+
+private fun updateOnlineCatalog(
+    context: android.content.Context,
+    folderUri: String?
+): List<Song> {
+
+    val latestUrl = "$CATALOG_URL?t=${System.currentTimeMillis()}"
+
+    val request = Request.Builder()
+        .url(latestUrl)
+        .header("Cache-Control", "no-cache, no-store")
+        .header("Pragma", "no-cache")
+        .header("User-Agent", "SongHub-Remote")
+        .build()
+
+    catalogHttpClient.newCall(request).execute().use { response ->
+
+        if (!response.isSuccessful) {
+            throw Exception("GitHub error: HTTP ${response.code}")
+        }
+
+        val json = response.body?.string()
+            ?: throw Exception("Walang natanggap na catalog.")
+
+        val updatedSongs = parseSongs(json)
+
+        if (!folderUri.isNullOrBlank()) {
+            replaceCatalog(
+                context,
+                Uri.parse(folderUri),
+                json
+            )
+        } else {
+            saveInternalCatalog(context, json)
+        }
+
+        return updatedSongs
+    }
+}
+
+// DOCUMENTS / SONGHUB FOLDER
+
+private fun getCatalogDirectory(
+    context: android.content.Context,
+    treeUri: Uri,
+    create: Boolean = false
+): DocumentFile {
+    val selectedFolder = DocumentFile.fromTreeUri(context, treeUri)
+        ?: throw Exception("Hindi mabuksan ang napiling folder.")
+
+    if (selectedFolder.name.equals("SongHub", ignoreCase = true)) {
+        return selectedFolder
+    }
+
+    var songHubFolder = selectedFolder.findFile("SongHub")
+
+    if (songHubFolder == null && create) {
+        songHubFolder = selectedFolder.createDirectory("SongHub")
+    }
+
+    if (songHubFolder == null || !songHubFolder.isDirectory) {
+        throw Exception("Hindi makita o magawa ang SongHub folder.")
+    }
+
+    return songHubFolder
+}
+
+// LOAD ALL AVAILABLE CATALOGS AND USE THE LARGEST VALID ONE
+
+private fun loadSongs(
+    context: android.content.Context,
+    folderUri: String?
+): List<Song> {
+
+    val catalogs = mutableListOf<List<Song>>()
+
+    if (!folderUri.isNullOrBlank()) {
+        try {
+            val folder = getCatalogDirectory(
+                context,
+                Uri.parse(folderUri)
+            )
+
+            val file = folder.findFile("songs_catalog.json")
+
+            if (file != null && file.exists()) {
+                val json = context.contentResolver
+                    .openInputStream(file.uri)
+                    ?.bufferedReader()
+                    ?.use { it.readText() }
+
+                if (!json.isNullOrBlank()) {
+                    catalogs.add(parseSongs(json))
+                }
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    try {
+        val cachedFile = File(
+            context.filesDir,
+            "songs_catalog.json"
+        )
+
+        if (cachedFile.exists()) {
+            val json = cachedFile.readText(Charsets.UTF_8)
+            catalogs.add(parseSongs(json))
+        }
+    } catch (_: Exception) {
+    }
+
+    try {
+        val json = context.assets
+            .open("songs_catalog.json")
+            .bufferedReader()
+            .use { it.readText() }
+
+        catalogs.add(parseSongs(json))
+    } catch (_: Exception) {
+    }
+
+    return catalogs.maxByOrNull { it.size }
+        ?: throw Exception("Walang mabasang valid song catalog.")
+}
+
+// CREATE INITIAL DOCUMENTS CATALOG
+
+private fun ensureCatalogFile(
+    context: android.content.Context,
+    parentUri: Uri
+) {
+    val folder = getCatalogDirectory(
+        context,
+        parentUri,
+        create = true
+    )
+
+    if (folder.findFile("songs_catalog.json")?.exists() == true) return
+
+    val json = context.assets
+        .open("songs_catalog.json")
+        .bufferedReader()
+        .use { it.readText() }
+
+    val file = folder.createFile(
+        "application/json",
+        "songs_catalog.json"
+    ) ?: throw Exception("Hindi makagawa ng catalog file.")
+
+    context.contentResolver.openOutputStream(file.uri, "wt")
+        ?.bufferedWriter()
+        ?.use { it.write(json) }
+        ?: throw Exception("Hindi maisulat ang catalog file.")
+}
+
+// WRITE DOCUMENT FILE
+
+private fun writeDocumentFile(
+    context: android.content.Context,
+    file: DocumentFile,
+    content: String
+) {
+    context.contentResolver.openOutputStream(file.uri, "wt")
+        ?.bufferedWriter()
+        ?.use { it.write(content) }
+        ?: throw Exception("Hindi maisulat ang ${file.name ?: "JSON file"}.")
+}
+
+// REPLACE CATALOG WITH BACKUP
+
+private fun replaceCatalog(
+    context: android.content.Context,
+    parentUri: Uri,
+    json: String
+) {
+    parseSongs(json)
+
+    val folder = getCatalogDirectory(
+        context,
+        parentUri,
+        create = true
+    )
+
+    val oldFile = folder.findFile("songs_catalog.json")
+    val backupFile = folder.findFile("songs_catalog_backup.json")
+
+    var oldContent: String? = null
+
+    if (oldFile != null && oldFile.exists()) {
+        oldContent = context.contentResolver
+            .openInputStream(oldFile.uri)
+            ?.bufferedReader()
+            ?.use { it.readText() }
+            ?: throw Exception("Hindi mabasa ang kasalukuyang catalog.")
+
+        val backup = backupFile ?: folder.createFile(
+            "application/json",
+            "songs_catalog_backup.json"
+        ) ?: throw Exception("Hindi makagawa ng backup file.")
+
+        writeDocumentFile(context, backup, oldContent)
+    }
+
+    val targetFile = oldFile ?: folder.createFile(
+        "application/json",
+        "songs_catalog.json"
+    ) ?: throw Exception("Hindi makagawa ng bagong catalog file.")
+
+    try {
+        writeDocumentFile(context, targetFile, json)
+
+        val verification = context.contentResolver
+            .openInputStream(targetFile.uri)
+            ?.bufferedReader()
+            ?.use { it.readText() }
+            ?: throw Exception("Hindi ma-verify ang bagong catalog.")
+
+        parseSongs(verification)
+
+    } catch (e: Exception) {
+
+        if (oldContent != null) {
+            try {
+                writeDocumentFile(context, targetFile, oldContent)
+            } catch (_: Exception) {
+            }
+        } else {
+            targetFile.delete()
+        }
+
+        throw e
+    }
 }
 
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -638,7 +758,10 @@ class MainActivity : ComponentActivity() {
                 colorScheme = darkColorScheme(
                     primary = Accent,
                     background = Navy,
-                    surface = Color(0xFF222E50)
+                    surface = Color(0xFF1B2340),
+                    onPrimary = Navy,
+                    onBackground = TextWhite,
+                    onSurface = TextWhite
                 )
             ) {
                 SongHubApp()
@@ -649,6 +772,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun SongHubApp() {
+
     val context = LocalContext.current
     val activity = context as ComponentActivity
     val scope = rememberCoroutineScope()
@@ -658,41 +782,67 @@ fun SongHubApp() {
     }
 
     var ip by remember {
-        mutableStateOf(prefs.getString("pc_ip", "") ?: "")
-    }
-
-    var port by remember {
-        mutableStateOf(prefs.getString("pc_port", "8080") ?: "8080")
-    }
-
-    var folderUri by remember {
         mutableStateOf(
-            prefs.getString("catalog_folder_uri", null)
-                ?.let { Uri.parse(it) }
+            prefs.getString("pc_ip", "192.168.10.4") ?: "192.168.10.4"
         )
     }
 
-    var songs by remember { mutableStateOf(emptyList<Song>()) }
-    var searchText by remember { mutableStateOf("") }
-    var selectedLetter by remember { mutableStateOf<String?>(null) }
-    var selectedSong by remember { mutableStateOf<Song?>(null) }
-
-    var connected by remember { mutableStateOf(false) }
-    var connectionMessage by remember {
-        mutableStateOf("Not connected to SongHub PC.")
+    var port by remember {
+        mutableStateOf(
+            prefs.getString("pc_port", "48080") ?: "48080"
+        )
     }
 
-    var socket by remember { mutableStateOf<WebSocket?>(null) }
-
-    var showSettingsPage by remember { mutableStateOf(false) }
-    var showSharePage by remember { mutableStateOf(false) }
     var showPcSettings by remember { mutableStateOf(false) }
     var showCatalogSettings by remember { mutableStateOf(false) }
+    var showShareCodeDialog by remember { mutableStateOf(false) }
+
+    var folderUri by remember {
+        mutableStateOf(prefs.getString("catalog_folder", null))
+    }
+
+    var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var filteredSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+
+    var showAlphabet by remember { mutableStateOf(false) }
+    var selectedLetter by remember { mutableStateOf<String?>(null) }
+
+    val sortedSongs = remember(songs) {
+        sortSongsAlphabetically(songs)
+    }
+
+    var searchText by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(true) }
+
+    var socket by remember { mutableStateOf<WebSocket?>(null) }
+    var connected by remember { mutableStateOf(false) }
+    var connectionStatus by remember { mutableStateOf("Not connected") }
+
+    var message by remember { mutableStateOf("") }
+    var selectedSong by remember { mutableStateOf<Song?>(null) }
+
     var showScoresPage by remember { mutableStateOf(false) }
 
     var scoreHistory by remember {
         mutableStateOf(loadScoreHistory(prefs))
     }
+
+    var lastPcStatus by remember { mutableStateOf("") }
+    var pendingScore by remember { mutableStateOf(0) }
+    var pendingSongCode by remember { mutableStateOf("") }
+    var pendingSongTitle by remember { mutableStateOf("") }
+    var pendingSongArtist by remember { mutableStateOf("") }
+
+    // APP UPDATE STATES
+
+    var checkingAppUpdate by remember { mutableStateOf(false) }
+    var downloadingAppUpdate by remember { mutableStateOf(false) }
+    var appUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    var downloadedApk by remember { mutableStateOf<File?>(null) }
+    var appUpdateMessage by remember { mutableStateOf("") }
+    var showAppUpdateDialog by remember { mutableStateOf(false) }
+
+    // PENDING UPDATE INDICATORS
 
     var pendingNewSongCount by remember {
         mutableIntStateOf(
@@ -700,303 +850,585 @@ fun SongHubApp() {
         )
     }
 
-    var showAppUpdateDialog by remember { mutableStateOf(false) }
-    var checkingAppUpdate by remember { mutableStateOf(false) }
-    var downloadingAppUpdate by remember { mutableStateOf(false) }
-    var appUpdateMessage by remember { mutableStateOf("Checking for updates...") }
-    var appUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
-    var downloadedApk by remember { mutableStateOf<File?>(null) }
-
-    var showCatalogStatus by remember { mutableStateOf(false) }
-    var catalogStatus by remember { mutableStateOf("") }
-    var catalogBusy by remember { mutableStateOf(false) }
-
-    val wsClient = remember {
-        OkHttpClient.Builder()
-            .pingInterval(20, TimeUnit.SECONDS)
-            .build()
+    var pendingAppVersionCode by remember {
+        mutableIntStateOf(
+            prefs.getInt(PREF_PENDING_APP_VERSION_CODE, 0)
+        )
     }
 
-    BackHandler(
-        enabled = showSharePage ||
-                showSettingsPage ||
-                showScoresPage ||
-                showPcSettings ||
-                showCatalogSettings
-    ) {
+    var pendingAppVersionName by remember {
+        mutableStateOf(
+            prefs.getString(PREF_PENDING_APP_VERSION_NAME, "") ?: ""
+        )
+    }
+
+    BackHandler(enabled = showShareCodeDialog || showScoresPage) {
         when {
-            showSharePage -> showSharePage = false
-            showSettingsPage -> showSettingsPage = false
+            showShareCodeDialog -> showShareCodeDialog = false
             showScoresPage -> showScoresPage = false
-            showPcSettings -> showPcSettings = false
-            showCatalogSettings -> showCatalogSettings = false
         }
     }
 
+    val client = remember {
+        OkHttpClient.Builder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+    }
+
+    // CHECK APP UPDATE
+
     fun checkForAppUpdate() {
-        checkingAppUpdate = true
-        showAppUpdateDialog = true
-        appUpdateInfo = null
-        appUpdateMessage = "Checking for updates..."
-
         scope.launch {
-            try {
-                val info = fetchAppUpdateInfo()
-                val installed = getInstalledVersionCode(context)
+            checkingAppUpdate = true
+            appUpdateMessage = "Checking GitHub for app updates..."
+            appUpdateInfo = null
+            showAppUpdateDialog = true
 
-                if (info == null || info.versionCode <= installed) {
-                    appUpdateMessage = "Your SongHub app is already up to date."
-                    appUpdateInfo = null
-                } else {
-                    appUpdateInfo = info
-                    appUpdateMessage = "A new version is available."
+            try {
+                val remoteInfo = withContext(Dispatchers.IO) {
+                    fetchAppUpdateInfo()
+                }
+
+                val installedVersion = withContext(Dispatchers.IO) {
+                    getInstalledVersionCode(context)
+                }
+
+                if (remoteInfo.versionCode > installedVersion) {
+
+                    appUpdateInfo = remoteInfo
+
+                    pendingAppVersionCode = remoteInfo.versionCode
+                    pendingAppVersionName = remoteInfo.versionName
+
                     prefs.edit()
-                        .putLong(
+                        .putInt(
                             PREF_PENDING_APP_VERSION_CODE,
-                            info.versionCode
+                            remoteInfo.versionCode
                         )
                         .putString(
                             PREF_PENDING_APP_VERSION_NAME,
-                            info.versionName
+                            remoteInfo.versionName
                         )
                         .apply()
+
+                    appUpdateMessage =
+                        "New version available: ${remoteInfo.versionName}"
+
+                } else {
+
+                    appUpdateInfo = null
+
+                    // Clear only when the pending version is already installed.
+                    if (
+                        pendingAppVersionCode == 0 ||
+                        installedVersion >= pendingAppVersionCode
+                    ) {
+                        pendingAppVersionCode = 0
+                        pendingAppVersionName = ""
+
+                        prefs.edit()
+                            .remove(PREF_PENDING_APP_VERSION_CODE)
+                            .remove(PREF_PENDING_APP_VERSION_NAME)
+                            .apply()
+                    }
+
+                    appUpdateMessage =
+                        "Your SongHub Remote is up to date."
                 }
+
             } catch (e: Exception) {
-                appUpdateMessage = e.message ?: "Unable to check for updates."
+                appUpdateMessage =
+                    "Update check failed: ${e.message}"
+
             } finally {
                 checkingAppUpdate = false
             }
         }
     }
 
-    fun downloadUpdate() {
-        val info = appUpdateInfo ?: return
+    // DOWNLOAD APP UPDATE
 
-        downloadingAppUpdate = true
-        appUpdateMessage = "Downloading update..."
+    fun downloadUpdate() {
+        val update = appUpdateInfo ?: return
 
         scope.launch {
+            downloadingAppUpdate = true
+            appUpdateMessage =
+                "Downloading SongHub Remote ${update.versionName}..."
+
             try {
-                downloadedApk = downloadAppUpdate(context, info)
-                appUpdateMessage = "Download complete. Ready to install."
+                val apk = withContext(Dispatchers.IO) {
+                    downloadAppUpdate(context, update)
+                }
+
+                downloadedApk = apk
+                appUpdateMessage =
+                    "Download complete! Ready to install version ${update.versionName}."
+
             } catch (e: Exception) {
-                appUpdateMessage = e.message ?: "Download failed."
+                appUpdateMessage =
+                    "Download failed: ${e.message}"
+
             } finally {
                 downloadingAppUpdate = false
             }
         }
     }
 
+    // INSTALL DOWNLOADED UPDATE
+
     fun installUpdate() {
-        val apk = downloadedApk ?: return
+        val apk = downloadedApk
+
+        if (apk == null || !apk.exists()) {
+            appUpdateMessage = "Download the APK first."
+            return
+        }
 
         try {
             installDownloadedApk(context, apk)
+
         } catch (e: Exception) {
+
             if (e.message == "UNKNOWN_SOURCE_PERMISSION") {
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:${context.packageName}")
-                )
-                activity.startActivity(intent)
+                try {
+                    val settingsIntent = Intent(
+                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:${context.packageName}")
+                    )
+
+                    activity.startActivity(settingsIntent)
+
+                    appUpdateMessage =
+                        "Enable Allow from this source, then return and tap INSTALL UPDATE again."
+
+                } catch (_: Exception) {
+                    appUpdateMessage =
+                        "Hindi mabuksan ang installation permission settings."
+                }
+
             } else {
-                appUpdateMessage = e.message ?: "Unable to install update."
+                appUpdateMessage =
+                    "Install error: ${e.message}"
             }
         }
     }
+
+    // MANUAL ONLINE CATALOG REFRESH
 
     fun refreshCatalog() {
-        if (catalogBusy) return
-
-        catalogBusy = true
-        catalogStatus = "Refreshing song catalog..."
-
         scope.launch {
+            loading = true
+            message = "Checking GitHub for catalog updates..."
+
             try {
-                val updatedSongs = updateOnlineCatalog(context, folderUri)
-                val added = recordCatalogChanges(context, updatedSongs)
-
-                songs = sortSongsAlphabetically(updatedSongs)
-                pendingNewSongCount = prefs.getInt(
-                    PREF_PENDING_NEW_SONG_COUNT,
-                    0
-                )
-
-                catalogStatus = if (added > 0) {
-                    "Catalog updated. $added new song(s) added."
-                } else {
-                    "Catalog is up to date."
+                val updated = withContext(Dispatchers.IO) {
+                    updateOnlineCatalog(context, folderUri)
                 }
-            } catch (e: Exception) {
-                catalogStatus = e.message ?: "Catalog refresh failed."
-                songs = sortSongsAlphabetically(
-                    loadSongs(context, folderUri)
-                )
-            } finally {
-                catalogBusy = false
-                showCatalogStatus = true
-            }
-        }
-    }
 
-    val folderPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        if (uri != null) {
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
+                // Record the latest codes, then clear the notification
+                // because the user manually acknowledged the catalog update.
+                recordCatalogChanges(prefs, updated)
 
-                folderUri = uri
                 prefs.edit()
-                    .putString("catalog_folder_uri", uri.toString())
+                    .putInt(PREF_PENDING_NEW_SONG_COUNT, 0)
                     .apply()
 
-                ensureCatalogFile(context, uri)
-                songs = sortSongsAlphabetically(
-                    loadSongs(context, uri)
-                )
+                pendingNewSongCount = 0
+                songs = updated
 
-                catalogStatus = "SongHub folder selected successfully."
+                message = "Online catalog updated: ${updated.size} songs."
+
             } catch (e: Exception) {
-                catalogStatus = e.message ?: "Unable to select folder."
-            }
 
-            showCatalogStatus = true
+                // Keep the pending badge if the manual update fails.
+                try {
+                    val savedSongs = withContext(Dispatchers.IO) {
+                        loadSongs(context, folderUri)
+                    }
+
+                    songs = savedSongs
+                    message =
+                        "Offline mode: saved catalog (${savedSongs.size} songs)."
+
+                } catch (localError: Exception) {
+                    message = "Catalog error: ${localError.message}"
+                }
+
+            } finally {
+                loading = false
+            }
         }
     }
 
-    val importPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
+    // AUTOMATIC UPDATE ON APP START
+
+    LaunchedEffect(Unit) {
+
+        // Check whether the pending app update has actually been installed.
+        try {
+            val installedVersion = withContext(Dispatchers.IO) {
+                getInstalledVersionCode(context)
+            }
+
+            if (
+                pendingAppVersionCode > 0 &&
+                installedVersion >= pendingAppVersionCode
+            ) {
+                pendingAppVersionCode = 0
+                pendingAppVersionName = ""
+
+                prefs.edit()
+                    .remove(PREF_PENDING_APP_VERSION_CODE)
+                    .remove(PREF_PENDING_APP_VERSION_NAME)
+                    .apply()
+            }
+        } catch (_: Exception) {
+        }
+
+        // Load local catalog first for offline support.
+        try {
+            songs = withContext(Dispatchers.IO) {
+                loadSongs(context, folderUri)
+            }
+
+        } catch (e: Exception) {
+            message = "Local catalog error: ${e.message}"
+
+        } finally {
+            loading = false
+        }
+
+        // Automatically fetch GitHub catalog.
+        // Do not clear the pending catalog badge here.
+        try {
+            val updatedSongs = withContext(Dispatchers.IO) {
+                updateOnlineCatalog(context, folderUri)
+            }
+
+            val pendingCount = withContext(Dispatchers.IO) {
+                recordCatalogChanges(prefs, updatedSongs)
+            }
+
+            pendingNewSongCount = pendingCount
+            songs = updatedSongs
+
+            message =
+                "GitHub catalog updated: ${updatedSongs.size} songs."
+
+        } catch (e: Exception) {
+
+            if (songs.isNotEmpty()) {
+                message = "Offline mode: saved catalog is active."
+            } else {
+                message = "Online catalog unavailable: ${e.message}"
+            }
+        }
+    }
+
+    // DOCUMENTS FOLDER PICKER
+
+    val folderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
+
         if (uri != null) {
             scope.launch {
                 try {
-                    val json = withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)
-                            ?.bufferedReader()
-                            ?.readText()
-                            ?: throw Exception("Unable to read JSON file.")
-                    }
-
-                    val parsed = parseSongs(json)
-                    if (parsed.isEmpty()) {
-                        throw Exception("Walang valid na kanta sa JSON.")
-                    }
-
                     withContext(Dispatchers.IO) {
-                        if (folderUri != null) {
-                            replaceCatalog(context, folderUri!!, json)
-                        } else {
-                            saveInternalCatalog(context, json)
-                        }
+
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
+
+                        ensureCatalogFile(context, uri)
                     }
 
-                    songs = sortSongsAlphabetically(parsed)
-                    catalogStatus = "Catalog imported successfully."
-                } catch (e: Exception) {
-                    catalogStatus = e.message ?: "Import failed."
-                }
+                    folderUri = uri.toString()
 
-                showCatalogStatus = true
+                    prefs.edit()
+                        .putString("catalog_folder", uri.toString())
+                        .apply()
+
+                    loading = true
+
+                    val updatedSongs = withContext(Dispatchers.IO) {
+                        loadSongs(context, uri.toString())
+                    }
+
+                    songs = updatedSongs
+                    message =
+                        "SongHub folder ready: ${updatedSongs.size} songs."
+
+                } catch (e: Exception) {
+                    message = "Folder error: ${e.message}"
+
+                } finally {
+                    loading = false
+                }
             }
         }
     }
 
+    // JSON IMPORT PICKER
+
+    val jsonPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+
+        if (uri != null) {
+            scope.launch {
+                try {
+                    val targetFolder = folderUri
+
+                    if (targetFolder.isNullOrBlank()) {
+                        message = "Pumili muna ng SongHub folder."
+                        return@launch
+                    }
+
+                    val importedJson = withContext(Dispatchers.IO) {
+
+                        val json = context.contentResolver
+                            .openInputStream(uri)
+                            ?.bufferedReader()
+                            ?.use { it.readText() }
+                            ?: throw Exception("Hindi mabasa ang JSON file.")
+
+                        replaceCatalog(
+                            context,
+                            Uri.parse(targetFolder),
+                            json
+                        )
+
+                        json
+                    }
+
+                    val updatedSongs = parseSongs(importedJson)
+                    songs = updatedSongs
+                    message = "Catalog updated: ${updatedSongs.size} songs."
+
+                } catch (e: Exception) {
+                    message = "Import failed: ${e.message}"
+                }
+            }
+        }
+    }
+
+    // CONNECT TO SONGHUB PC
+
     fun connectToPC() {
+
         val cleanIp = ip.trim()
         val cleanPort = port.trim().toIntOrNull()
 
-        if (cleanIp.isBlank() || cleanPort == null ||
+        if (
+            cleanIp.isBlank() ||
+            cleanPort == null ||
             cleanPort !in 1..65535
         ) {
-            connectionMessage = "Enter a valid IP address and port."
+            message = "Check your IP address and port."
             return
         }
+
+        socket?.close(1000, "Reconnect")
+
+        connected = false
+        connectionStatus = "Connecting..."
 
         prefs.edit()
             .putString("pc_ip", cleanIp)
             .putString("pc_port", cleanPort.toString())
             .apply()
 
-        socket?.close(1000, "Reconnect")
-        connected = false
-        connectionMessage = "Connecting..."
-
         val request = Request.Builder()
             .url("ws://$cleanIp:$cleanPort/")
             .header("Origin", "https://songbook.songhub.space")
             .build()
 
-        socket = wsClient.newWebSocket(
+        socket = client.newWebSocket(
             request,
             object : WebSocketListener() {
+
                 override fun onOpen(
                     webSocket: WebSocket,
                     response: Response
                 ) {
-                    connected = true
-                    connectionMessage = "Connected to SongHub PC."
+                    activity.runOnUiThread {
+                        connected = true
+                        connectionStatus = "Connected"
+                        message = "Connected to SongHub PC!"
+
+                        lastPcStatus = ""
+                        pendingScore = 0
+                        pendingSongCode = ""
+                        pendingSongTitle = ""
+                        pendingSongArtist = ""
+                    }
                 }
 
                 override fun onMessage(
                     webSocket: WebSocket,
                     text: String
                 ) {
-                    try {
-                        val json = JSONObject(text)
-                        val action = json.optString("action")
-                        val type = json.optString("type")
+                    activity.runOnUiThread {
 
-                        if (
-                            action == "score_update" ||
-                            type == "score_update"
-                        ) {
-                            val score = json.optInt(
-                                "score",
-                                json.optInt("value", 0)
-                            )
+                        try {
+                            val data = JSONObject(text)
 
-                            val code = json.optString("code")
-                            val title = json.optString("title", "Unknown song")
-                            val artist = json.optString("artist", "")
+                            when (data.optString("type")) {
 
-                            val entry = ScoreEntry(
-                                id = UUID.randomUUID().toString(),
-                                code = code,
-                                title = title,
-                                artist = artist,
-                                score = score,
-                                playedAt = System.currentTimeMillis()
-                            )
+                                "score_update" -> {
+                                    pendingScore = data.optInt(
+                                        "score",
+                                        pendingScore
+                                    )
 
-                            scoreHistory = listOf(entry) + scoreHistory
-                            saveScoreHistory(prefs, scoreHistory)
+                                    message = "Live score: $pendingScore"
+                                }
+
+                                "state_update" -> {
+
+                                    val status = data.optString(
+                                        "status",
+                                        ""
+                                    ).uppercase(Locale.ROOT)
+
+                                    val nowPlaying =
+                                        data.optJSONObject("now_playing")
+
+                                    if (status == "SCORING") {
+
+                                        val code = data.optString(
+                                            "current_song_code"
+                                        ).takeIf {
+                                            it.isNotBlank()
+                                        } ?: nowPlaying
+                                            ?.optString("code", "")
+                                            .orEmpty()
+
+                                        val title = nowPlaying
+                                            ?.optString("title", "")
+                                            .orEmpty()
+
+                                        val artist = nowPlaying
+                                            ?.optString("artist", "")
+                                            .orEmpty()
+
+                                        if (code.isNotBlank()) {
+                                            pendingSongCode = code
+                                        }
+
+                                        if (
+                                            title.isNotBlank() &&
+                                            title != "Unknown"
+                                        ) {
+                                            pendingSongTitle = title
+                                        }
+
+                                        if (artist.isNotBlank()) {
+                                            pendingSongArtist = artist
+                                        }
+
+                                        pendingScore = data.optInt(
+                                            "score",
+                                            pendingScore
+                                        )
+
+                                        if (
+                                            pendingSongTitle.isBlank() &&
+                                            pendingSongCode.isNotBlank()
+                                        ) {
+                                            songs.firstOrNull {
+                                                it.code == pendingSongCode
+                                            }?.let { catalogSong ->
+                                                pendingSongTitle =
+                                                    catalogSong.title
+                                                pendingSongArtist =
+                                                    catalogSong.artist
+                                            }
+                                        }
+
+                                        message =
+                                            "Scoring: ${pendingSongTitle.ifBlank { "Song $pendingSongCode" }} — $pendingScore"
+                                    }
+
+                                    if (
+                                        status == "IDLE" &&
+                                        lastPcStatus == "SCORING"
+                                    ) {
+
+                                        val title = pendingSongTitle.ifBlank {
+                                            songs.firstOrNull {
+                                                it.code == pendingSongCode
+                                            }?.title ?: "Unknown"
+                                        }
+
+                                        val artist = pendingSongArtist.ifBlank {
+                                            songs.firstOrNull {
+                                                it.code == pendingSongCode
+                                            }?.artist.orEmpty()
+                                        }
+
+                                        if (
+                                            pendingSongCode.isNotBlank() &&
+                                            title != "Unknown"
+                                        ) {
+
+                                            val entry = ScoreEntry(
+                                                id = UUID.randomUUID().toString(),
+                                                code = pendingSongCode,
+                                                title = title,
+                                                artist = artist,
+                                                score = pendingScore,
+                                                playedAt = System.currentTimeMillis()
+                                            )
+
+                                            scoreHistory =
+                                                listOf(entry) + scoreHistory
+
+                                            saveScoreHistory(
+                                                prefs,
+                                                scoreHistory
+                                            )
+
+                                            message =
+                                                "Saved score: $title — $pendingScore"
+
+                                        } else {
+                                            message =
+                                                "Song finished, but song details were unavailable."
+                                        }
+
+                                        pendingSongCode = ""
+                                        pendingSongTitle = ""
+                                        pendingSongArtist = ""
+                                        pendingScore = 0
+                                    }
+
+                                    if (status.isNotBlank()) {
+                                        lastPcStatus = status
+                                    }
+
+                                    if (
+                                        status != "SCORING" &&
+                                        status != "IDLE"
+                                    ) {
+                                        message = "PC: $text"
+                                    }
+                                }
+
+                                else -> {
+                                    message = "PC: $text"
+                                }
+                            }
+
+                        } catch (_: Exception) {
+                            message = "PC: $text"
                         }
-
-                        if (
-                            action == "state_update" ||
-                            type == "state_update"
-                        ) {
-                            connectionMessage = json.optString(
-                                "message",
-                                "Connected to SongHub PC."
-                            )
-                        }
-                    } catch (_: Exception) {
                     }
-                }
-
-                override fun onClosing(
-                    webSocket: WebSocket,
-                    code: Int,
-                    reason: String
-                ) {
-                    connected = false
-                    connectionMessage = "Connection closing..."
                 }
 
                 override fun onClosed(
@@ -1004,8 +1436,10 @@ fun SongHubApp() {
                     code: Int,
                     reason: String
                 ) {
-                    connected = false
-                    connectionMessage = "Disconnected from SongHub PC."
+                    activity.runOnUiThread {
+                        connected = false
+                        connectionStatus = "Disconnected"
+                    }
                 }
 
                 override fun onFailure(
@@ -1013,260 +1447,942 @@ fun SongHubApp() {
                     t: Throwable,
                     response: Response?
                 ) {
-                    connected = false
-                    connectionMessage = t.message ?: "Connection failed."
+                    activity.runOnUiThread {
+                        connected = false
+                        connectionStatus =
+                            "Connection failed: ${t.message ?: "Unknown error"}"
+                    }
                 }
             }
         )
     }
 
+    // DISCONNECT
+
     fun disconnectFromPC() {
-        socket?.close(1000, "Disconnected by user")
+        socket?.close(1000, "Disconnected")
         socket = null
         connected = false
-        connectionMessage = "Disconnected."
+        connectionStatus = "Not connected"
+        message = "Disconnected from PC."
     }
 
-    fun sendCommand(action: String, payload: String = "") {
-        if (!connected) {
-            connectionMessage = "Connect to SongHub PC first."
+    // SEND PC COMMAND
+
+    fun sendCommand(
+        action: String,
+        payload: String? = null
+    ) {
+        val currentSocket = socket
+
+        if (!connected || currentSocket == null) {
+            message = "Connect to SongHub PC first."
             return
         }
 
-        val message = JSONObject().apply {
+        val json = JSONObject().apply {
             put("action", action)
-            put("payload", payload)
+            put("payload", payload ?: JSONObject.NULL)
         }
 
-        socket?.send(message.toString())
+        message = if (currentSocket.send(json.toString())) {
+            "Command sent: $action"
+        } else {
+            "Could not send command."
+        }
     }
+
+    // CLOSE SOCKET WHEN APP CLOSES
 
     DisposableEffect(Unit) {
         onDispose {
             socket?.close(1000, "App closed")
-            wsClient.dispatcher.executorService.shutdown()
+            client.dispatcher.executorService.shutdown()
         }
     }
 
-    LaunchedEffect(Unit) {
-        songs = sortSongsAlphabetically(
-            loadSongs(context, folderUri)
+    // MAIN SONGBOOK PAGE
+
+    if (!showScoresPage) {
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(0xFF171B3D),
+                            Navy,
+                            Color(0xFF101D36)
+                        )
+                    )
+                )
+                .padding(horizontal = 14.dp)
+        ) {
+
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                Column(modifier = Modifier.weight(1f)) {
+
+                    Text(
+                        "SONGHUB",
+                        color = Accent,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 4.sp
+                    )
+
+                    Text(
+                        "SONGBOOK",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Black,
+                        color = TextWhite
+                    )
+                }
+
+                Column(horizontalAlignment = Alignment.End) {
+
+                    Text(
+                        "OFFLINE CATALOG",
+                        color = Color(0xFFB58BFF),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        "${filteredSongs.size} SONGS",
+                        color = Color(0xFFFFC66D),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                Button(
+                    onClick = { showScoresPage = true },
+                    contentPadding = PaddingValues(
+                        horizontal = 11.dp,
+                        vertical = 8.dp
+                    ),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF9168F5),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        "SCORES",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+
+                Spacer(Modifier.width(7.dp))
+
+                // SETTINGS GEAR WITH RED UPDATE INDICATOR
+
+                Box(
+                    modifier = Modifier
+                        .size(43.dp)
+                        .background(
+                            Color(0xFF293653),
+                            RoundedCornerShape(13.dp)
+                        )
+                        .clickable {
+                            showCatalogSettings = true
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "⚙",
+                        color = Accent,
+                        fontSize = 27.sp
+                    )
+
+                    if (
+                        pendingNewSongCount > 0 ||
+                        pendingAppVersionCode > 0
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(17.dp)
+                                .background(
+                                    AlertRed,
+                                    RoundedCornerShape(50)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "!",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // PC CONNECTION CARD
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF202B4B)
+                ),
+                shape = RoundedCornerShape(15.dp)
+            ) {
+
+                Column(Modifier.padding(9.dp)) {
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+
+                        Box(
+                            modifier = Modifier
+                                .size(9.dp)
+                                .background(
+                                    if (connected) Accent
+                                    else Color(0xFFFFB454),
+                                    RoundedCornerShape(50)
+                                )
+                        )
+
+                        Spacer(Modifier.width(8.dp))
+
+                        Text(
+                            connectionStatus,
+                            color = if (connected) Accent else TextWhite,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        TextButton(
+                            onClick = {
+                                showPcSettings = !showPcSettings
+                            },
+                            contentPadding = PaddingValues(
+                                horizontal = 7.dp,
+                                vertical = 0.dp
+                            )
+                        ) {
+                            Text(
+                                if (showPcSettings) "HIDE ▲" else "EDIT ▼",
+                                color = Color(0xFFB58BFF),
+                                fontSize = 10.sp
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                if (connected) disconnectFromPC()
+                                else connectToPC()
+                            },
+                            contentPadding = PaddingValues(
+                                horizontal = 12.dp,
+                                vertical = 3.dp
+                            ),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (connected)
+                                    AlertRed
+                                else Accent,
+                                contentColor = if (connected)
+                                    Color.White
+                                else Navy
+                            )
+                        ) {
+                            Text(
+                                if (connected) "OFF" else "CONNECT",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    if (showPcSettings) {
+
+                        Spacer(Modifier.height(7.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+
+                            OutlinedTextField(
+                                value = ip,
+                                onValueChange = { ip = it },
+                                modifier = Modifier.weight(2f),
+                                enabled = !connected,
+                                label = { Text("PC IP") },
+                                singleLine = true,
+                                textStyle = LocalTextStyle.current.copy(
+                                    fontSize = 13.sp
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = TextWhite,
+                                    unfocusedTextColor = TextWhite,
+                                    focusedBorderColor = Accent,
+                                    unfocusedBorderColor = Muted
+                                )
+                            )
+
+                            OutlinedTextField(
+                                value = port,
+                                onValueChange = {
+                                    port = it.filter(Char::isDigit)
+                                },
+                                modifier = Modifier.weight(1f),
+                                enabled = !connected,
+                                label = { Text("Port") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number
+                                ),
+                                textStyle = LocalTextStyle.current.copy(
+                                    fontSize = 13.sp
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = TextWhite,
+                                    unfocusedTextColor = TextWhite,
+                                    focusedBorderColor = Accent,
+                                    unfocusedBorderColor = Muted
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(11.dp))
+
+            // SEARCH
+
+            OutlinedTextField(
+                value = searchText,
+                onValueChange = { searchText = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = {
+                    Text(
+                        "Search title, artist or song number...",
+                        fontSize = 13.sp,
+                        color = Muted
+                    )
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                textStyle = LocalTextStyle.current.copy(
+                    fontSize = 15.sp,
+                    color = TextWhite
+                ),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextWhite,
+                    unfocusedTextColor = TextWhite,
+                    focusedBorderColor = Accent,
+                    unfocusedBorderColor = Color(0xFF52618D),
+                    cursorColor = Accent
+                )
+            )
+
+            Spacer(Modifier.height(6.dp))
+
+            // A-Z FILTER
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                TextButton(
+                    onClick = {
+                        showAlphabet = !showAlphabet
+                    },
+                    contentPadding = PaddingValues(
+                        horizontal = 10.dp,
+                        vertical = 3.dp
+                    )
+                ) {
+                    Text(
+                        if (showAlphabet) "A–Z  ▲" else "A–Z  ▼",
+                        color = Accent,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                Text(
+                    if (selectedLetter == null) "All letters"
+                    else "Showing letter $selectedLetter",
+                    color = Muted,
+                    fontSize = 11.sp
+                )
+            }
+
+            if (showAlphabet) {
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    AlphabetButton(
+                        text = "ALL",
+                        selected = selectedLetter == null,
+                        onClick = { selectedLetter = null }
+                    )
+
+                    alphabet.forEach { letter ->
+                        AlphabetButton(
+                            text = letter,
+                            selected = selectedLetter == letter,
+                            onClick = { selectedLetter = letter }
+                        )
+                    }
+                }
+            }
+
+            // SEARCH PRIORITY
+
+            LaunchedEffect(
+                searchText,
+                sortedSongs,
+                selectedLetter
+            ) {
+
+                delay(180)
+
+                val term = searchText.trim()
+                    .lowercase(Locale.ROOT)
+
+                filteredSongs = withContext(Dispatchers.Default) {
+
+                    sortedSongs
+                        .mapIndexedNotNull { index, song ->
+
+                            val title = song.title.trim()
+                                .lowercase(Locale.ROOT)
+
+                            val artist = song.artist
+                                .lowercase(Locale.ROOT)
+
+                            val code = song.code
+                                .lowercase(Locale.ROOT)
+
+                            val firstLetter = song.title.trim()
+                                .firstOrNull()
+                                ?.uppercaseChar()
+                                ?.toString()
+
+                            val matchesLetter =
+                                selectedLetter == null ||
+                                        firstLetter == selectedLetter
+
+                            if (!matchesLetter) {
+                                return@mapIndexedNotNull null
+                            }
+
+                            val rank = when {
+
+                                term.isBlank() -> 0
+                                title == term -> 0
+                                title.startsWith(term) -> 1
+                                title.contains(" $term") -> 2
+                                title.contains(term) -> 3
+                                artist.startsWith(term) -> 4
+                                artist.contains(term) -> 5
+                                code.contains(term) -> 6
+
+                                else -> return@mapIndexedNotNull null
+                            }
+
+                            Triple(rank, index, song)
+                        }
+                        .sortedWith(
+                            compareBy<Triple<Int, Int, Song>> { it.first }
+                                .thenBy { it.second }
+                        )
+                        .map { it.third }
+                }
+            }
+
+            // SONG LIST
+
+            when {
+
+                loading -> {
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Accent)
+                    }
+                }
+
+                filteredSongs.isEmpty() -> {
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "No songs found.",
+                            color = Muted,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+
+                else -> {
+
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = PaddingValues(
+                            top = 2.dp,
+                            bottom = 10.dp
+                        )
+                    ) {
+
+                        items(
+                            items = filteredSongs,
+                            key = { it.code },
+                            contentType = { "song" }
+                        ) { song ->
+
+                            SongCard(
+                                song = song,
+                                onClick = {
+                                    selectedSong = song
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // PLAYBACK CONTROLS
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF202B4B)
+                ),
+                shape = RoundedCornerShape(15.dp)
+            ) {
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(7.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Button(
+                        onClick = { sendCommand("play_pause") },
+                        enabled = connected,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(5.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF36CFC1),
+                            contentColor = Navy
+                        )
+                    ) {
+                        Text(
+                            "PLAY / PAUSE",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(Modifier.width(5.dp))
+
+                    Button(
+                        onClick = { sendCommand("next") },
+                        enabled = connected,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(5.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF9168F5)
+                        )
+                    ) {
+                        Text(
+                            "NEXT",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(Modifier.width(5.dp))
+
+                    Button(
+                        onClick = { sendCommand("stop") },
+                        enabled = connected,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(5.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AlertRed
+                        )
+                    ) {
+                        Text(
+                            "STOP",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            if (message.isNotBlank()) {
+
+                Text(
+                    text = message,
+                    color = Accent,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp)
+                )
+            }
+        }
+
+    } else {
+
+        ScoresPage(
+            entries = scoreHistory,
+            onBack = {
+                showScoresPage = false
+            },
+            onRefresh = {
+                scoreHistory = loadScoreHistory(prefs)
+                message =
+                    "Score history refreshed: ${scoreHistory.size} records."
+            },
+            onClear = {
+                scoreHistory = emptyList()
+                saveScoreHistory(prefs, emptyList())
+                message = "Score history cleared."
+            }
         )
-
-        try {
-            val updatedSongs = updateOnlineCatalog(context, folderUri)
-            recordCatalogChanges(context, updatedSongs)
-            songs = sortSongsAlphabetically(updatedSongs)
-            pendingNewSongCount = prefs.getInt(
-                PREF_PENDING_NEW_SONG_COUNT,
-                0
-            )
-        } catch (_: Exception) {
-        }
     }
 
-    when {
-        showSharePage -> {
-            ShareAppPage(
-                onBack = { showSharePage = false }
-            )
-        }
+    // CATALOG SETTINGS
 
-        showSettingsPage -> {
-            SettingsPage(
-                onBack = { showSettingsPage = false },
-                onShareApp = {
-                    showSettingsPage = false
-                    showSharePage = true
-                },
-                onCatalogSettings = {
-                    showSettingsPage = false
-                    showCatalogSettings = true
-                },
-                onPCSettings = {
-                    showSettingsPage = false
-                    showPcSettings = true
-                },
-                onCheckUpdate = {
-                    checkForAppUpdate()
-                }
-            )
-        }
+    if (showCatalogSettings) {
 
-        showScoresPage -> {
-            ScoresPage(
-                entries = scoreHistory,
-                onBack = { showScoresPage = false },
-                onRefresh = {
-                    scoreHistory = loadScoreHistory(prefs)
-                },
-                onClear = {
-                    scoreHistory = emptyList()
-                    saveScoreHistory(prefs, emptyList())
-                }
-            )
-        }
-
-        else -> {
-            SongbookPage(
-                songs = songs,
-                connected = connected,
-                connectionMessage = connectionMessage,
-                searchText = searchText,
-                onSearchChange = { searchText = it },
-                selectedLetter = selectedLetter,
-                onLetterChange = { selectedLetter = it },
-                onSongClick = { selectedSong = it },
-                onSettingsClick = { showSettingsPage = true },
-                onScoresClick = { showScoresPage = true },
-                onPCClick = { showPcSettings = true },
-                pendingNewSongCount = pendingNewSongCount,
-                onRefreshCatalog = {
-                    prefs.edit()
-                        .putInt(PREF_PENDING_NEW_SONG_COUNT, 0)
-                        .apply()
-                    pendingNewSongCount = 0
-                    refreshCatalog()
-                },
-                onPlay = { sendCommand("play") },
-                onPause = { sendCommand("pause") },
-                onNext = { sendCommand("next") },
-                onStop = { sendCommand("stop") }
-            )
-        }
-    }
-
-    if (showPcSettings) {
         AlertDialog(
-            onDismissRequest = { showPcSettings = false },
+            onDismissRequest = {
+                showCatalogSettings = false
+            },
             containerColor = Color(0xFF222E50),
             title = {
                 Text(
-                    "PC CONNECTION",
+                    "SONGHUB SETTINGS",
                     color = Accent,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
             },
             text = {
+
                 Column(
+                    modifier = Modifier.heightIn(max = 520.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    OutlinedTextField(
-                        value = ip,
-                        onValueChange = { ip = it },
-                        label = { Text("PC IP ADDRESS") },
-                        singleLine = true
+
+                    Text(
+                        "Manage your song catalog and app updates.",
+                        color = Muted,
+                        fontSize = 13.sp
                     )
 
-                    OutlinedTextField(
-                        value = port,
-                        onValueChange = { port = it },
-                        label = { Text("PORT") },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Number
-                        ),
-                        singleLine = true
+                    Button(
+                        onClick = { showShareCodeDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Accent,
+                            contentColor = Navy
+                        )
+                    ) {
+                        Text("▦  SHARE CODE", fontWeight = FontWeight.ExtraBold)
+                    }
+
+                    HorizontalDivider(color = Color(0xFF52618D))
+
+                    Text(
+                        "ACTIVE CATALOG",
+                        color = Color(0xFFB58BFF),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
                     )
 
                     Text(
-                        connectionMessage,
-                        color = if (connected) Accent else Muted,
-                        fontSize = 12.sp
+                        if (folderUri == null) {
+                            "Internal catalog / APK assets"
+                        } else {
+                            "Documents / SongHub / songs_catalog.json"
+                        },
+                        color = TextWhite,
+                        fontSize = 13.sp
+                    )
+
+                    Text(
+                        "TOTAL SONGS: ${songs.size}",
+                        color = Color(0xFFFFC66D),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+
+                    Button(
+                        onClick = {
+                            folderPicker.launch(null)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF34466F)
+                        )
+                    ) {
+                        Text("📁  CHOOSE DOCUMENTS FOLDER")
+                    }
+
+                    Button(
+                        onClick = {
+
+                            if (folderUri == null) {
+                                message = "Pumili muna ng SongHub folder."
+                            } else {
+                                jsonPicker.launch(
+                                    arrayOf(
+                                        "application/json",
+                                        "text/*",
+                                        "*/*"
+                                    )
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF9168F5)
+                        )
+                    ) {
+                        Text("＋  IMPORT / REPLACE JSON")
+                    }
+
+                    // CATALOG UPDATE BUTTON WITH NEW SONG COUNT
+
+                    Button(
+                        onClick = {
+                            refreshCatalog()
+                        },
+                        enabled = !loading,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Accent,
+                            contentColor = Navy
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                if (loading) {
+                                    "CHECKING CATALOG..."
+                                } else {
+                                    "↻  UPDATE SONG CATALOG"
+                                },
+                                fontWeight = FontWeight.ExtraBold
+                            )
+
+                            if (!loading && pendingNewSongCount > 0) {
+                                Spacer(Modifier.width(9.dp))
+
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            AlertRed,
+                                            RoundedCornerShape(50)
+                                        )
+                                        .padding(
+                                            horizontal = 8.dp,
+                                            vertical = 3.dp
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        pendingNewSongCount.toString(),
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (pendingNewSongCount > 0) {
+                        Text(
+                            "$pendingNewSongCount new song(s) detected from GitHub. Tap UPDATE SONG CATALOG to acknowledge.",
+                            color = Color(0xFFFFA0AA),
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    HorizontalDivider(color = Color(0xFF52618D))
+
+                    // APP UPDATE HEADING WITH VERSION INDICATOR
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "APP UPDATE",
+                            color = Color(0xFFB58BFF),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        if (pendingAppVersionName.isNotBlank()) {
+                            Text(
+                                "NEW: v$pendingAppVersionName",
+                                color = Accent,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            checkForAppUpdate()
+                        },
+                        enabled = !checkingAppUpdate && !downloadingAppUpdate,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF34466F)
+                        )
+                    ) {
+                        Text(
+                            if (checkingAppUpdate) {
+                                "CHECKING APP UPDATE..."
+                            } else {
+                                "CHECK APP UPDATE"
+                            },
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    if (appUpdateInfo != null) {
+
+                        Text(
+                            "NEW VERSION: ${appUpdateInfo!!.versionName}",
+                            color = Accent,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.sp
+                        )
+
+                        Text(
+                            appUpdateInfo!!.releaseNotes,
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+
+                        Button(
+                            onClick = {
+                                downloadUpdate()
+                            },
+                            enabled = !downloadingAppUpdate,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Accent,
+                                contentColor = Navy
+                            )
+                        ) {
+                            Text(
+                                if (downloadingAppUpdate) {
+                                    "DOWNLOADING APK..."
+                                } else {
+                                    "DOWNLOAD APP UPDATE"
+                                },
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+
+                    if (downloadedApk != null) {
+
+                        Button(
+                            onClick = {
+                                installUpdate()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF36B879),
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(
+                                "INSTALL DOWNLOADED UPDATE",
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+
+                    if (appUpdateMessage.isNotBlank()) {
+                        Text(
+                            appUpdateMessage,
+                            color = Accent,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    Text(
+                        "The app checks GitHub for new versions. Android will ask you to confirm installation. Your existing app data should remain when the update uses the same package name and signing key.",
+                        color = Muted,
+                        fontSize = 10.sp
+                    )
+
+                    HorizontalDivider(color = Color(0xFF52618D))
+
+                    Text(
+                        "Automatic na iche-check ang GitHub catalog tuwing bubuksan ang app. Gagana pa rin ang saved catalog kapag offline.",
+                        color = Muted,
+                        fontSize = 11.sp
                     )
                 }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (connected) disconnectFromPC()
-                        else connectToPC()
+                        showCatalogSettings = false
                     }
-                ) {
-                    Text(
-                        if (connected) "DISCONNECT" else "CONNECT",
-                        color = Accent
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPcSettings = false }) {
-                    Text("CLOSE", color = Muted)
-                }
-            }
-        )
-    }
-
-    if (showCatalogSettings) {
-        AlertDialog(
-            onDismissRequest = { showCatalogSettings = false },
-            containerColor = Color(0xFF222E50),
-            title = {
-                Text(
-                    "CATALOG MANAGER",
-                    color = Accent,
-                    fontWeight = FontWeight.ExtraBold
-                )
-            },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(9.dp)
-                ) {
-                    Text(
-                        "Songs loaded: ${songs.size}",
-                        color = TextWhite
-                    )
-
-                    Text(
-                        "Choose a folder where SongHub can store its catalog, or import a JSON catalog.",
-                        color = Muted,
-                        fontSize = 12.sp
-                    )
-
-                    Button(
-                        onClick = { folderPicker.launch(null) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("SELECT SONGHUB FOLDER")
-                    }
-
-                    Button(
-                        onClick = {
-                            importPicker.launch(
-                                arrayOf(
-                                    "application/json",
-                                    "text/plain"
-                                )
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("IMPORT / REPLACE JSON")
-                    }
-
-                    Button(
-                        onClick = { refreshCatalog() },
-                        enabled = !catalogBusy,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            if (catalogBusy) {
-                                "REFRESHING..."
-                            } else {
-                                "REFRESH ONLINE CATALOG"
-                            }
-                        )
-                    }
-
-                    Text(
-                        catalogStatus,
-                        color = Accent,
-                        fontSize = 12.sp
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = { showCatalogSettings = false }
                 ) {
                     Text("DONE", color = Accent)
                 }
@@ -1274,7 +2390,52 @@ fun SongHubApp() {
         )
     }
 
+    // SHARE CODE QR DIALOG
+    if (showShareCodeDialog) {
+        val qrBitmap = remember { createShareCodeQr(SHARE_CODE_URL).asImageBitmap() }
+        AlertDialog(
+            onDismissRequest = { showShareCodeDialog = false },
+            containerColor = Color(0xFF222E50),
+            title = {
+                Text("SONGHUB SHARE CODE", color = Accent, fontWeight = FontWeight.ExtraBold)
+            },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "SCAN TO DOWNLOAD SONGHUB REMOTE",
+                        color = TextWhite,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(15.dp))
+                    Image(
+                        bitmap = qrBitmap,
+                        contentDescription = "SongHub Share Code QR",
+                        modifier = Modifier
+                            .size(230.dp)
+                            .background(Color.White, RoundedCornerShape(12.dp))
+                            .padding(8.dp)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Scan this QR code to open the latest SongHub Remote release.",
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showShareCodeDialog = false }) {
+                    Text("CLOSE", color = Accent)
+                }
+            }
+        )
+    }
+
+    // APP UPDATE RESULT DIALOG
+
     if (showAppUpdateDialog) {
+
         AlertDialog(
             onDismissRequest = {
                 if (!checkingAppUpdate) {
@@ -1293,6 +2454,7 @@ fun SongHubApp() {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(9.dp)
                 ) {
+
                     if (checkingAppUpdate) {
                         CircularProgressIndicator(
                             color = Accent,
@@ -1322,7 +2484,9 @@ fun SongHubApp() {
 
                     if (appUpdateInfo != null) {
                         Button(
-                            onClick = { downloadUpdate() },
+                            onClick = {
+                                downloadUpdate()
+                            },
                             enabled = !downloadingAppUpdate,
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
@@ -1342,7 +2506,9 @@ fun SongHubApp() {
 
                     if (downloadedApk != null) {
                         Button(
-                            onClick = { installUpdate() },
+                            onClick = {
+                                installUpdate()
+                            },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF36B879)
@@ -1355,7 +2521,9 @@ fun SongHubApp() {
             },
             confirmButton = {
                 TextButton(
-                    onClick = { showAppUpdateDialog = false },
+                    onClick = {
+                        showAppUpdateDialog = false
+                    },
                     enabled = !checkingAppUpdate
                 ) {
                     Text("CLOSE", color = Accent)
@@ -1364,29 +2532,14 @@ fun SongHubApp() {
         )
     }
 
-    if (showCatalogStatus) {
-        AlertDialog(
-            onDismissRequest = { showCatalogStatus = false },
-            containerColor = Color(0xFF222E50),
-            title = {
-                Text("SONGHUB", color = Accent)
-            },
-            text = {
-                Text(catalogStatus, color = TextWhite)
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = { showCatalogStatus = false }
-                ) {
-                    Text("OK", color = Accent)
-                }
-            }
-        )
-    }
+    // SELECTED SONG DIALOG
 
     selectedSong?.let { song ->
+
         AlertDialog(
-            onDismissRequest = { selectedSong = null },
+            onDismissRequest = {
+                selectedSong = null
+            },
             containerColor = Color(0xFF222E50),
             title = {
                 Text(
@@ -1397,7 +2550,9 @@ fun SongHubApp() {
                 )
             },
             text = {
+
                 Column {
+
                     Text(
                         song.artist,
                         color = Color(0xFFB9C6E8),
@@ -1415,6 +2570,7 @@ fun SongHubApp() {
                 }
             },
             confirmButton = {
+
                 Button(
                     onClick = {
                         sendCommand("play", song.code)
@@ -1426,11 +2582,16 @@ fun SongHubApp() {
                         contentColor = Navy
                     )
                 ) {
-                    Text("PLAY NOW", fontWeight = FontWeight.Bold)
+                    Text(
+                        "PLAY NOW",
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             },
             dismissButton = {
+
                 Row {
+
                     TextButton(
                         onClick = {
                             sendCommand("reserve", song.code)
@@ -1438,13 +2599,21 @@ fun SongHubApp() {
                         },
                         enabled = connected
                     ) {
-                        Text("RESERVE", color = Color(0xFFB58BFF))
+                        Text(
+                            "RESERVE",
+                            color = Color(0xFFB58BFF)
+                        )
                     }
 
                     TextButton(
-                        onClick = { selectedSong = null }
+                        onClick = {
+                            selectedSong = null
+                        }
                     ) {
-                        Text("CANCEL", color = Muted)
+                        Text(
+                            "CANCEL",
+                            color = Muted
+                        )
                     }
                 }
             }
@@ -1452,315 +2621,7 @@ fun SongHubApp() {
     }
 }
 
-@Composable
-private fun SongbookPage(
-    songs: List<Song>,
-    connected: Boolean,
-    connectionMessage: String,
-    searchText: String,
-    onSearchChange: (String) -> Unit,
-    selectedLetter: String?,
-    onLetterChange: (String?) -> Unit,
-    onSongClick: (Song) -> Unit,
-    onSettingsClick: () -> Unit,
-    onScoresClick: () -> Unit,
-    onPCClick: () -> Unit,
-    pendingNewSongCount: Int,
-    onRefreshCatalog: () -> Unit,
-    onPlay: () -> Unit,
-    onPause: () -> Unit,
-    onNext: () -> Unit,
-    onStop: () -> Unit
-) {
-    val filteredSongs = remember(
-        songs,
-        searchText,
-        selectedLetter
-    ) {
-        songs.filter { song ->
-            val matchesSearch =
-                searchText.isBlank() ||
-                        song.title.contains(searchText, true) ||
-                        song.artist.contains(searchText, true) ||
-                        song.code.contains(searchText, true)
-
-            val matchesLetter =
-                selectedLetter == null ||
-                        song.title.trim().firstOrNull()
-                            ?.uppercaseChar()
-                            ?.toString() == selectedLetter
-
-            matchesSearch && matchesLetter
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFF171B3D),
-                        Navy,
-                        Color(0xFF101D36)
-                    )
-                )
-            )
-            .padding(horizontal = 14.dp)
-    ) {
-        Spacer(Modifier.height(12.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "SONGHUB",
-                    color = Accent,
-                    fontSize = 25.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp
-                )
-
-                Text(
-                    "SONGBOOK REMOTE",
-                    color = Muted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp
-                )
-            }
-
-            TextButton(onClick = onScoresClick) {
-                Text(
-                    "SCORES",
-                    color = Accent,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Box {
-                TextButton(onClick = onSettingsClick) {
-                    Text(
-                        "⚙",
-                        color = TextWhite,
-                        fontSize = 25.sp
-                    )
-                }
-
-                if (pendingNewSongCount > 0) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .size(9.dp)
-                            .background(AlertRed, RoundedCornerShape(50))
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Color(0xFF202944),
-                    RoundedCornerShape(12.dp)
-                )
-                .clickable { onPCClick() }
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .background(
-                        if (connected) Color(0xFF36D78B) else AlertRed,
-                        RoundedCornerShape(50)
-                    )
-            )
-
-            Spacer(Modifier.width(9.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    if (connected) "PC CONNECTED" else "PC CONNECTION",
-                    color = TextWhite,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp
-                )
-
-                Text(
-                    connectionMessage,
-                    color = Muted,
-                    fontSize = 10.sp,
-                    maxLines = 1
-                )
-            }
-
-            Text(
-                "OPEN ›",
-                color = Accent,
-                fontWeight = FontWeight.Bold,
-                fontSize = 10.sp
-            )
-        }
-
-        Spacer(Modifier.height(10.dp))
-
-        OutlinedTextField(
-            value = searchText,
-            onValueChange = onSearchChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search song, artist or number...") },
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp)
-        )
-
-        Spacer(Modifier.height(9.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            AlphabetButton(
-                text = "ALL",
-                selected = selectedLetter == null,
-                onClick = { onLetterChange(null) }
-            )
-
-            ('A'..'Z').forEach { letter ->
-                val value = letter.toString()
-
-                AlphabetButton(
-                    text = value,
-                    selected = selectedLetter == value,
-                    onClick = { onLetterChange(value) }
-                )
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "${filteredSongs.size} SONGS",
-                color = Muted,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
-            )
-
-            TextButton(onClick = onRefreshCatalog) {
-                Text(
-                    if (pendingNewSongCount > 0) {
-                        "↻ UPDATE ($pendingNewSongCount)"
-                    } else {
-                        "↻ REFRESH"
-                    },
-                    color = Accent,
-                    fontSize = 11.sp
-                )
-            }
-        }
-
-        if (filteredSongs.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    if (songs.isEmpty()) {
-                        "No songs loaded. Open Settings to manage catalog."
-                    } else {
-                        "No songs found."
-                    },
-                    color = Muted
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(7.dp),
-                contentPadding = PaddingValues(bottom = 10.dp)
-            ) {
-                items(
-                    filteredSongs,
-                    key = { it.code }
-                ) { song ->
-                    SongCard(
-                        song = song,
-                        onClick = { onSongClick(song) }
-                    )
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(7.dp)
-        ) {
-            PlaybackButton(
-                label = "PLAY",
-                modifier = Modifier.weight(1f),
-                onClick = onPlay
-            )
-
-            PlaybackButton(
-                label = "PAUSE",
-                modifier = Modifier.weight(1f),
-                onClick = onPause
-            )
-
-            PlaybackButton(
-                label = "NEXT",
-                modifier = Modifier.weight(1f),
-                onClick = onNext
-            )
-
-            PlaybackButton(
-                label = "STOP",
-                modifier = Modifier.weight(1f),
-                onClick = onStop
-            )
-        }
-    }
-}
-
-@Composable
-private fun PlaybackButton(
-    label: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Button(
-        onClick = onClick,
-        modifier = modifier.height(43.dp),
-        contentPadding = PaddingValues(3.dp),
-        shape = RoundedCornerShape(9.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF293653),
-            contentColor = Accent
-        )
-    ) {
-        Text(
-            label,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.ExtraBold
-        )
-    }
-}
+// ALPHABET BUTTON
 
 @Composable
 fun AlphabetButton(
@@ -1768,19 +2629,23 @@ fun AlphabetButton(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+
     Box(
         modifier = Modifier
             .background(
                 color = if (selected) Accent else Color(0xFF293653),
                 shape = RoundedCornerShape(9.dp)
             )
-            .clickable { onClick() }
+            .clickable {
+                onClick()
+            }
             .padding(
                 horizontal = 12.dp,
                 vertical = 9.dp
             ),
         contentAlignment = Alignment.Center
     ) {
+
         Text(
             text = text,
             color = if (selected) Navy else TextWhite,
@@ -1790,11 +2655,14 @@ fun AlphabetButton(
     }
 }
 
+// SONG CARD
+
 @Composable
 fun SongCard(
     song: Song,
     onClick: () -> Unit
 ) {
+
     val color = remember(song.code) {
         songColors[
             Math.floorMod(
@@ -1811,10 +2679,13 @@ fun SongCard(
                 Color(0xFF202944),
                 RoundedCornerShape(13.dp)
             )
-            .clickable { onClick() }
+            .clickable {
+                onClick()
+            }
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+
         Box(
             modifier = Modifier
                 .width(82.dp)
@@ -1825,6 +2696,7 @@ fun SongCard(
                 ),
             contentAlignment = Alignment.Center
         ) {
+
             Text(
                 text = formatSongNumber(song.code),
                 color = Color.White,
@@ -1840,6 +2712,7 @@ fun SongCard(
         Column(
             modifier = Modifier.weight(1f)
         ) {
+
             Text(
                 song.title,
                 color = TextWhite,
@@ -1867,234 +2740,7 @@ fun SongCard(
     }
 }
 
-@Composable
-private fun SettingsPage(
-    onBack: () -> Unit,
-    onShareApp: () -> Unit,
-    onCatalogSettings: () -> Unit,
-    onPCSettings: () -> Unit,
-    onCheckUpdate: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Navy)
-            .padding(20.dp)
-    ) {
-        TextButton(onClick = onBack) {
-            Text("← BACK", color = Accent)
-        }
-
-        Spacer(Modifier.height(15.dp))
-
-        Text(
-            "SETTINGS",
-            color = TextWhite,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(Modifier.height(25.dp))
-
-        SettingsItem(
-            title = "PC CONNECTION",
-            description = "Connect SongHub Remote to your PC",
-            onClick = onPCSettings
-        )
-
-        SettingsItem(
-            title = "CATALOG MANAGER",
-            description = "Select folder, import or refresh songs",
-            onClick = onCatalogSettings
-        )
-
-        SettingsItem(
-            title = "CHECK APP UPDATE",
-            description = "Check for the latest SongHub version",
-            onClick = onCheckUpdate
-        )
-
-        SettingsItem(
-            title = "SHARE APP",
-            description = "QR code and download link",
-            onClick = onShareApp
-        )
-    }
-}
-
-@Composable
-private fun SettingsItem(
-    title: String,
-    description: String,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 11.dp)
-            .background(
-                Color(0xFF202944),
-                RoundedCornerShape(13.dp)
-            )
-            .clickable { onClick() }
-            .padding(16.dp)
-    ) {
-        Text(
-            title,
-            color = Accent,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 14.sp
-        )
-
-        Spacer(Modifier.height(4.dp))
-
-        Text(
-            description,
-            color = Muted,
-            fontSize = 11.sp
-        )
-    }
-}
-
-@Composable
-private fun ShareAppPage(
-    onBack: () -> Unit
-) {
-    val context = LocalContext.current
-
-    val qrBitmap = remember {
-        createQrBitmap(RELEASE_URL).asImageBitmap()
-    }
-
-    val versionName = remember {
-        getInstalledVersionName(context)
-    }
-
-    val versionCode = remember {
-        getInstalledVersionCode(context)
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFF171B3D),
-                        Navy,
-                        Color(0xFF101D36)
-                    )
-                )
-            )
-            .padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onBack) {
-                Text("← BACK", color = Accent)
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            Text(
-                "SHARE APP",
-                color = Accent,
-                fontSize = 21.sp,
-                fontWeight = FontWeight.Black
-            )
-
-            Spacer(Modifier.weight(1f))
-            Spacer(Modifier.width(55.dp))
-        }
-
-        Spacer(Modifier.height(22.dp))
-
-        Text(
-            "SONGHUB REMOTE",
-            color = TextWhite,
-            fontSize = 23.sp,
-            fontWeight = FontWeight.Black
-        )
-
-        Spacer(Modifier.height(15.dp))
-
-        Image(
-            bitmap = qrBitmap,
-            contentDescription = "SongHub download QR code",
-            modifier = Modifier
-                .size(230.dp)
-                .background(Color.White, RoundedCornerShape(12.dp))
-                .padding(8.dp)
-        )
-
-        Spacer(Modifier.height(15.dp))
-
-        Text(
-            "SCAN TO DOWNLOAD",
-            color = Accent,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 1.4.sp
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        Text(
-            "SongHub Remote",
-            color = TextWhite,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold
-        )
-
-        Text(
-            "Version $versionName  •  Build $versionCode",
-            color = Muted,
-            fontSize = 12.sp
-        )
-
-        Spacer(Modifier.height(14.dp))
-
-        Text(
-            RELEASE_URL,
-            color = Color(0xFF8CA8FF),
-            fontSize = 11.sp
-        )
-
-        Spacer(Modifier.height(20.dp))
-
-        Button(
-            onClick = {
-                val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(
-                        Intent.EXTRA_TEXT,
-                        "Download SongHub Remote:\n$RELEASE_URL"
-                    )
-                }
-
-                context.startActivity(
-                    Intent.createChooser(
-                        sendIntent,
-                        "Share SongHub Remote"
-                    )
-                )
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Accent,
-                contentColor = Navy
-            )
-        ) {
-            Text(
-                "SHARE LINK",
-                fontWeight = FontWeight.ExtraBold
-            )
-        }
-    }
-}
+// SCORES PAGE
 
 @Composable
 fun ScoresPage(
@@ -2103,6 +2749,7 @@ fun ScoresPage(
     onRefresh: () -> Unit,
     onClear: () -> Unit
 ) {
+
     var selectedLetter by remember {
         mutableStateOf<String?>(null)
     }
@@ -2122,7 +2769,9 @@ fun ScoresPage(
         selectedLetter,
         sortMode
     ) {
+
         val filtered = entries.filter { entry ->
+
             selectedLetter == null ||
                     entry.title.trim()
                         .firstOrNull()
@@ -2131,9 +2780,12 @@ fun ScoresPage(
         }
 
         when (sortMode) {
+
             "LOW" -> filtered.sortedWith(
                 compareBy<ScoreEntry> { it.score }
-                    .thenBy { it.title.lowercase(Locale.ROOT) }
+                    .thenBy {
+                        it.title.lowercase(Locale.ROOT)
+                    }
             )
 
             "AZ" -> filtered.sortedBy {
@@ -2142,7 +2794,9 @@ fun ScoresPage(
 
             else -> filtered.sortedWith(
                 compareByDescending<ScoreEntry> { it.score }
-                    .thenBy { it.title.lowercase(Locale.ROOT) }
+                    .thenBy {
+                        it.title.lowercase(Locale.ROOT)
+                    }
             )
         }
     }
@@ -2161,12 +2815,14 @@ fun ScoresPage(
             )
             .padding(horizontal = 14.dp)
     ) {
+
         Spacer(Modifier.height(12.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+
             TextButton(onClick = onBack) {
                 Text(
                     "‹ BACK",
@@ -2238,6 +2894,7 @@ fun ScoresPage(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+
             ScoreSortButton(
                 "A–Z",
                 sortMode == "AZ",
@@ -2265,7 +2922,10 @@ fun ScoresPage(
 
         Spacer(Modifier.height(13.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
             Text(
                 "FILTER",
                 color = Muted,
@@ -2291,6 +2951,7 @@ fun ScoresPage(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
+
             AlphabetButton(
                 "ALL",
                 selectedLetter == null
@@ -2299,6 +2960,7 @@ fun ScoresPage(
             }
 
             letters.forEach { letter ->
+
                 AlphabetButton(
                     letter,
                     selectedLetter == letter
@@ -2323,6 +2985,7 @@ fun ScoresPage(
                 ),
             verticalAlignment = Alignment.CenterVertically
         ) {
+
             Text(
                 "SONG",
                 color = Muted,
@@ -2340,15 +3003,18 @@ fun ScoresPage(
         }
 
         if (displayedEntries.isEmpty()) {
+
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
+
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+
                     Text(
                         "♪",
                         color = Color(0xFF9168F5),
@@ -2372,7 +3038,9 @@ fun ScoresPage(
                     )
                 }
             }
+
         } else {
+
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(7.dp),
@@ -2381,10 +3049,12 @@ fun ScoresPage(
                     top = 2.dp
                 )
             ) {
+
                 items(
                     displayedEntries,
                     key = { it.id }
                 ) { entry ->
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2398,9 +3068,11 @@ fun ScoresPage(
                             ),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+
                         Column(
                             modifier = Modifier.weight(1f)
                         ) {
+
                             Text(
                                 entry.title,
                                 color = TextWhite,
@@ -2456,7 +3128,10 @@ fun ScoresPage(
         }
     }
 
+    // CLEAR CONFIRMATION
+
     if (showClearConfirmation) {
+
         AlertDialog(
             onDismissRequest = {
                 showClearConfirmation = false
@@ -2495,12 +3170,17 @@ fun ScoresPage(
                         showClearConfirmation = false
                     }
                 ) {
-                    Text("CANCEL", color = Accent)
+                    Text(
+                        "CANCEL",
+                        color = Accent
+                    )
                 }
             }
         )
     }
 }
+
+// SCORE SORT BUTTON
 
 @Composable
 private fun ScoreSortButton(
@@ -2509,6 +3189,7 @@ private fun ScoreSortButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+
     TextButton(
         onClick = onClick,
         modifier = modifier.background(
@@ -2524,6 +3205,7 @@ private fun ScoreSortButton(
             vertical = 7.dp
         )
     ) {
+
         Text(
             label,
             color = if (selected) Accent else TextWhite,
