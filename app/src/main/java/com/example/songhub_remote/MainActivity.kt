@@ -662,6 +662,33 @@ private fun loadSongs(
         ?: throw Exception("Walang mabasang valid song catalog.")
 }
 
+// FAST STARTUP CATALOG: use app storage first, without waiting for SAF folder access.
+private fun loadFastLocalSongs(
+    context: android.content.Context
+): List<Song> {
+    val catalogs = mutableListOf<List<Song>>()
+
+    try {
+        val cachedFile = File(context.filesDir, "songs_catalog.json")
+        if (cachedFile.exists()) {
+            catalogs.add(parseSongs(cachedFile.readText(Charsets.UTF_8)))
+        }
+    } catch (_: Exception) {
+    }
+
+    try {
+        val json = context.assets
+            .open("songs_catalog.json")
+            .bufferedReader()
+            .use { it.readText() }
+        catalogs.add(parseSongs(json))
+    } catch (_: Exception) {
+    }
+
+    return catalogs.maxByOrNull { it.size }
+        ?: throw Exception("Walang mabasang valid local song catalog.")
+}
+
 // CREATE INITIAL DOCUMENTS CATALOG
 
 private fun ensureCatalogFile(
@@ -1155,6 +1182,18 @@ fun SongHubApp() {
 
     LaunchedEffect(Unit) {
 
+        // Show cached/bundled songs immediately. Do not wait for SAF or network.
+        try {
+            songs = withContext(Dispatchers.IO) {
+                loadFastLocalSongs(context)
+            }
+            message = "Loaded ${songs.size} songs."
+        } catch (e: Exception) {
+            message = "Local catalog error: ${e.message}"
+        } finally {
+            loading = false
+        }
+
         // Check whether the pending app update has actually been installed.
         try {
             val installedVersion = withContext(Dispatchers.IO) {
@@ -1176,21 +1215,18 @@ fun SongHubApp() {
         } catch (_: Exception) {
         }
 
-        // Load local catalog first for offline support.
+        // Refresh the selected SongHub folder and online catalog in the background.
+        // The song list remains visible while these sources are checked.
         try {
-            songs = withContext(Dispatchers.IO) {
+            val fullLocalSongs = withContext(Dispatchers.IO) {
                 loadSongs(context, folderUri)
             }
-
-        } catch (e: Exception) {
-            message = "Local catalog error: ${e.message}"
-
-        } finally {
-            loading = false
+            if (fullLocalSongs.size > songs.size) {
+                songs = fullLocalSongs
+            }
+        } catch (_: Exception) {
         }
 
-        // Automatically fetch GitHub catalog.
-        // Do not clear the pending catalog badge here.
         try {
             val updatedSongs = withContext(Dispatchers.IO) {
                 updateOnlineCatalog(context, folderUri)
@@ -1202,12 +1238,9 @@ fun SongHubApp() {
 
             pendingNewSongCount = pendingCount
             songs = updatedSongs
-
-            message =
-                "GitHub catalog updated: ${updatedSongs.size} songs."
+            message = "GitHub catalog updated: ${updatedSongs.size} songs."
 
         } catch (e: Exception) {
-
             if (songs.isNotEmpty()) {
                 message = "Offline mode: saved catalog is active."
             } else {
