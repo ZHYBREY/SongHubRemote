@@ -851,20 +851,9 @@ fun SongHubApp() {
         mutableStateOf(prefs.getString("catalog_folder", null))
     }
 
-    // Load the saved/bundled catalog on the first composition so the
-    // song list is populated immediately when the screen opens.
-    val initialSongs = remember {
-        try {
-            loadFastLocalSongs(context)
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-
-    var songs by remember { mutableStateOf(initialSongs) }
-    var filteredSongs by remember {
-        mutableStateOf(sortSongsAlphabetically(initialSongs))
-    }
+    // Keep disk/JSON work off the main thread so the app opens quickly.
+    var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var filteredSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
 
     var showAlphabet by remember { mutableStateOf(false) }
     var selectedLetter by remember { mutableStateOf<String?>(null) }
@@ -874,7 +863,9 @@ fun SongHubApp() {
     }
 
     var searchText by remember { mutableStateOf("") }
-    var loading by remember { mutableStateOf(false) }
+    // Used only to avoid showing "No songs found" before the first local load.
+    // No loading icon is displayed.
+    var loading by remember { mutableStateOf(true) }
 
     var socket by remember { mutableStateOf<WebSocket?>(null) }
     var connected by remember { mutableStateOf(false) }
@@ -2037,9 +2028,17 @@ fun SongHubApp() {
                 }
             }
 
-            // SONG LIST - no startup loading icon
+            // SONG LIST - keep the area blank during the quick background load
 
             when {
+
+                loading && filteredSongs.isEmpty() -> {
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    )
+                }
 
                 filteredSongs.isEmpty() -> {
 
