@@ -2143,14 +2143,14 @@ fun SongHubApp() {
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                "Version ${getInstalledVersionName(context)}",
+                                "Version 1.3",
                                 color = Accent,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.ExtraBold
                             )
                         }
                         Text(
-                            "BUILD ${getInstalledVersionCode(context)}",
+                            "BUILD 4",
                             color = TextWhite,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
