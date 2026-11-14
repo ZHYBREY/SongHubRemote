@@ -2020,14 +2020,14 @@ fun SongHubApp() {
                         contentAlignment = Alignment.Center
                     ) {
                         Canvas(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .rotate(loadingRotation)
+                            modifier = Modifier.size(42.dp)
                         ) {
+                            // Draw the moving arc directly from Compose state.
+                            // Changing startAngle forces the visible arc to advance.
                             drawArc(
                                 color = Accent,
-                                startAngle = -90f,
-                                sweepAngle = 270f,
+                                startAngle = loadingRotation - 90f,
+                                sweepAngle = 105f,
                                 useCenter = false,
                                 style = Stroke(
                                     width = 4.dp.toPx(),
