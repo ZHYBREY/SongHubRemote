@@ -851,8 +851,20 @@ fun SongHubApp() {
         mutableStateOf(prefs.getString("catalog_folder", null))
     }
 
-    var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
-    var filteredSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    // Load the saved/bundled catalog on the first composition so the
+    // song list is populated immediately when the screen opens.
+    val initialSongs = remember {
+        try {
+            loadFastLocalSongs(context)
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    var songs by remember { mutableStateOf(initialSongs) }
+    var filteredSongs by remember {
+        mutableStateOf(sortSongsAlphabetically(initialSongs))
+    }
 
     var showAlphabet by remember { mutableStateOf(false) }
     var selectedLetter by remember { mutableStateOf<String?>(null) }
@@ -862,20 +874,7 @@ fun SongHubApp() {
     }
 
     var searchText by remember { mutableStateOf("") }
-    var loading by remember { mutableStateOf(true) }
-
-    var loadingRotation by remember {
-        mutableFloatStateOf(0f)
-    }
-
-    // Drive the loader with a small coroutine tick so it keeps rotating
-    // even on devices where system animator duration is disabled.
-    LaunchedEffect(loading) {
-        while (loading) {
-            loadingRotation = (loadingRotation + 12f) % 360f
-            delay(16L)
-        }
-    }
+    var loading by remember { mutableStateOf(false) }
 
     var socket by remember { mutableStateOf<WebSocket?>(null) }
     var connected by remember { mutableStateOf(false) }
@@ -1984,8 +1983,6 @@ fun SongHubApp() {
                 selectedLetter
             ) {
 
-                delay(180)
-
                 val term = searchText.trim()
                     .lowercase(Locale.ROOT)
 
@@ -2040,36 +2037,9 @@ fun SongHubApp() {
                 }
             }
 
-            // SONG LIST
+            // SONG LIST - no startup loading icon
 
             when {
-
-                loading -> {
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Canvas(
-                            modifier = Modifier.size(42.dp)
-                        ) {
-                            // Draw the moving arc directly from Compose state.
-                            // Changing startAngle forces the visible arc to advance.
-                            drawArc(
-                                color = Accent,
-                                startAngle = loadingRotation - 90f,
-                                sweepAngle = 105f,
-                                useCenter = false,
-                                style = Stroke(
-                                    width = 4.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                            )
-                        }
-                    }
-                }
 
                 filteredSongs.isEmpty() -> {
 
