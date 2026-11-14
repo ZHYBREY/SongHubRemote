@@ -21,10 +21,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
@@ -828,6 +833,16 @@ fun SongHubApp() {
     var searchText by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }
 
+    val loadingTransition = rememberInfiniteTransition(label = "songLoading")
+    val loadingRotation by loadingTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing)
+        ),
+        label = "songLoadingRotation"
+    )
+
     var socket by remember { mutableStateOf<WebSocket?>(null) }
     var connected by remember { mutableStateOf(false) }
     var connectionStatus by remember { mutableStateOf("Not connected") }
@@ -986,7 +1001,7 @@ fun SongHubApp() {
                         .remove(PREF_PENDING_APP_VERSION_CODE)
                         .remove(PREF_PENDING_APP_VERSION_NAME)
                         .apply()
-                    appUpdateStatus = "YOUR APP IS UP TO DATE (v${getInstalledVersionName(context)})"
+                    appUpdateStatus = "Your app is up to date (v${getInstalledVersionName(context)})"
                 }
             } catch (e: Exception) {
                 appUpdateStatus = "Unable to check updates. Tap RETRY."
@@ -1652,10 +1667,7 @@ fun SongHubApp() {
                         fontSize = 27.sp
                     )
 
-                    if (
-                        pendingNewSongCount > 0 ||
-                        pendingAppVersionCode > 0
-                    ) {
+                    if (pendingAppVersionCode > 0) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
@@ -1980,7 +1992,7 @@ fun SongHubApp() {
                             .weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(color = Accent)
+                        CircularProgressIndicator(\n                            modifier = Modifier.rotate(loadingRotation),\n                            color = Accent\n                        )
                     }
                 }
 
@@ -2376,7 +2388,7 @@ fun SongHubApp() {
                     } else {
                         Text(
                             appUpdateStatus,
-                            color = if (appUpdateStatus.startsWith("YOUR APP IS UP TO DATE")) Accent else Muted,
+                            color = if (appUpdateStatus.startsWith("Your app is up to date")) Accent else Muted,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
