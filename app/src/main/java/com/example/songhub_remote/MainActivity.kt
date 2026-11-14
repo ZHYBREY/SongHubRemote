@@ -89,7 +89,7 @@ private const val APP_UPDATE_URL =
     "https://raw.githubusercontent.com/ZHYBREY/SongHub-Catalog/main/app_update.json"
 
 private const val SHARE_CODE_URL =
-    "https://www.mediafire.com/file/tlgc4ruzfmtvrtt/app-debug.apk/file"
+    "https://github.com/ZHYBREY/SongHubRemote/releases/latest/download/app-debug.apk"
 
 // UPDATE NOTIFICATION PREFERENCES
 
