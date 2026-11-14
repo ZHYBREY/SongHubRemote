@@ -1993,7 +1993,10 @@ fun SongHubApp() {
                             .weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(\n                            modifier = Modifier.rotate(loadingRotation),\n                            color = Accent\n                        )
+                        CircularProgressIndicator(
+                            modifier = Modifier.rotate(loadingRotation),
+                            color = Accent
+                        )
                     }
                 }
 
