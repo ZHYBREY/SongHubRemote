@@ -919,22 +919,17 @@ fun SongHubApp() {
 
                     appUpdateInfo = null
 
-                    // Clear only when the pending version is already installed.
-                    if (
-                        pendingAppVersionCode == 0 ||
-                        installedVersion >= pendingAppVersionCode
-                    ) {
-                        pendingAppVersionCode = 0
-                        pendingAppVersionName = ""
+                    // GitHub has no newer build: clear any stale update badge.
+                    pendingAppVersionCode = 0
+                    pendingAppVersionName = ""
 
-                        prefs.edit()
-                            .remove(PREF_PENDING_APP_VERSION_CODE)
-                            .remove(PREF_PENDING_APP_VERSION_NAME)
-                            .apply()
-                    }
+                    prefs.edit()
+                        .remove(PREF_PENDING_APP_VERSION_CODE)
+                        .remove(PREF_PENDING_APP_VERSION_NAME)
+                        .apply()
 
                     appUpdateMessage =
-                        "Your SongHub Remote is up to date."
+                        "Your app is up to date. (Build " + installedVersion + ")"
                 }
 
             } catch (e: Exception) {
@@ -2295,6 +2290,20 @@ fun SongHubApp() {
                             } else {
                                 "CHECK APP UPDATE"
                             },
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    if (appUpdateMessage.isNotBlank()) {
+                        Text(
+                            appUpdateMessage,
+                            color = if (appUpdateInfo == null &&
+                                appUpdateMessage.startsWith("Your app is up to date")) {
+                                Accent
+                            } else {
+                                Muted
+                            },
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
