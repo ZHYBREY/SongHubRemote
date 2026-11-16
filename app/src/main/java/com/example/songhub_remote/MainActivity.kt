@@ -82,8 +82,9 @@ private fun cleanLyricsText(raw: String): String {
         .replace(Regex("/+"), " ")
         .lineSequence()
         .map { it.replace(Regex("[\\t ]+"), " ").trim() }
-        .filter { it.isNotBlank() }
-        .joinToString("\\n")
+        .joinToString("\n")
+        .replace(Regex("\\n{3,}"), "\n\n")
+        .trim()
 }
 
 private fun readLyricsForSong(
