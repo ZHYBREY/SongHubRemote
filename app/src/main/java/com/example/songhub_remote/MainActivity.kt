@@ -3561,6 +3561,40 @@ fun CreatorPage(onBack: () -> Unit) {
                 radius = w * 0.42f,
                 center = greenCenter
             )
+
+            // Soft falling Christmas snow layered over the animated neon smoke.
+            for (i in 0 until 42) {
+                val seed = i.toFloat()
+                val xBase = ((i * 73) % 997) / 997f * w
+                val fall = (seed * 97f + phase * h * 1.35f) % (h + 30f)
+                val drift = kotlin.math.sin(phase * 6.2831855f + seed * 1.7f) * (10f + (i % 5) * 3f)
+                val snowX = (xBase + drift).coerceIn(3f, w - 3f)
+                val snowY = fall - 15f
+                val radius = 1.3f + (i % 4) * 0.55f
+                val snowColor = Color(0xFFFFF7E8).copy(alpha = 0.30f + (i % 4) * 0.12f)
+
+                drawCircle(
+                    color = snowColor,
+                    radius = radius,
+                    center = Offset(snowX, snowY)
+                )
+
+                if (i % 3 == 0) {
+                    val arm = radius * 2.4f
+                    drawLine(
+                        color = snowColor.copy(alpha = 0.65f),
+                        start = Offset(snowX - arm, snowY - arm),
+                        end = Offset(snowX + arm, snowY + arm),
+                        strokeWidth = 0.8f
+                    )
+                    drawLine(
+                        color = snowColor.copy(alpha = 0.65f),
+                        start = Offset(snowX - arm, snowY + arm),
+                        end = Offset(snowX + arm, snowY - arm),
+                        strokeWidth = 0.8f
+                    )
+                }
+            }
         }
 
         Column(
