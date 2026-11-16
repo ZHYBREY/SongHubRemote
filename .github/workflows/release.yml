@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v1.4"
+        default: "v1.5"
   push:
     tags:
       - "v*"
@@ -50,6 +50,7 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           target_commitish: main
-          name: SongHub Remote 1.4
+          name: SongHub Remote 1.5
           generate_release_notes: true
+          overwrite_files: true
           files: app/build/outputs/apk/debug/app-debug.apk
