@@ -14,6 +14,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -1630,81 +1631,140 @@ fun SongHubApp() {
     // MAIN SONGBOOK PAGE
 
     if (showLyricsDialog) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
+        val lyricsTransition = rememberInfiniteTransition(label = "lyrics-neon")
+        val lyricsGlow by lyricsTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 5200, easing = LinearEasing)
+            ),
+            label = "lyrics-glow"
+        )
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
-                        listOf(Color(0xFF101A33), Navy, Color(0xFF07101F))
+                        listOf(Color(0xFF080D20), Color(0xFF111332), Color(0xFF071827))
                     )
                 )
-                .padding(horizontal = 20.dp, vertical = 18.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = { showLyricsDialog = false }) {
-                    Text("‹  BACK", color = Accent, fontWeight = FontWeight.ExtraBold)
-                }
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "SONGHUB LYRICS",
-                    color = Accent,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 2.sp
+            )
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val wave = lyricsGlow * 6.2831855f
+                val pinkCenter = Offset(
+                    size.width * (0.18f + 0.13f * kotlin.math.sin(wave)),
+                    size.height * 0.20f
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0x665D25FF), Color(0x33FF36C9), Color.Transparent),
+                        center = pinkCenter,
+                        radius = size.width * 0.72f
+                    ),
+                    radius = size.width * 0.72f,
+                    center = pinkCenter
+                )
+                val cyanCenter = Offset(
+                    size.width * (0.82f + 0.10f * kotlin.math.cos(wave)),
+                    size.height * 0.78f
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0x6655F4E6), Color(0x22438BFA), Color.Transparent),
+                        center = cyanCenter,
+                        radius = size.width * 0.70f
+                    ),
+                    radius = size.width * 0.70f,
+                    center = cyanCenter
                 )
             }
 
-            Spacer(Modifier.height(24.dp))
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFF172744))
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 18.dp, vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp, vertical = 18.dp)
             ) {
-                Text(
-                    "\"${lyricsPreviewSong?.title ?: "Selected song"}\"",
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    color = TextWhite,
-                    fontSize = 23.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                Spacer(Modifier.height(7.dp))
-                Text(
-                    lyricsPreviewSong?.artist.orEmpty(),
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Color(0xFFB9C6E8),
-                    fontSize = 14.sp,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                Spacer(Modifier.height(26.dp))
-                Text(
-                    "OFFLINE LYRICS WILL APPEAR HERE",
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Accent,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "The scanned song lyrics will be displayed here, centered and separated into clear stanzas.",
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Color(0xFFD5DDF2),
-                    fontSize = 17.sp,
-                    lineHeight = 29.sp,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { showLyricsDialog = false }) {
+                        Text("‹  BACK", color = Color(0xFF55F4E6), fontWeight = FontWeight.ExtraBold)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "SONGHUB LYRICS",
+                        color = Color(0xFFFF65D4),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 2.sp
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.width(55.dp))
+                }
+
+                Spacer(Modifier.height(18.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .border(
+                            1.5.dp,
+                            Brush.linearGradient(
+                                listOf(
+                                    Color(0xFF55F4E6),
+                                    Color(0xFF9A65FF),
+                                    Color(0xFFFF4FCB),
+                                    Color(0xFF55F4E6)
+                                )
+                            ),
+                            RoundedCornerShape(20.dp)
+                        )
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color(0xE9101730))
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 18.dp, vertical = 25.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "\"\${lyricsPreviewSong?.title ?: "Selected song"}\"\",
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color.White,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Black,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        lyricsPreviewSong?.artist.orEmpty(),
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFFB9C6E8),
+                        fontSize = 14.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(Modifier.height(25.dp))
+                    Text(
+                        "♫  LYRICS  ♫",
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF55F4E6),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        "The scanned song lyrics will be displayed here, centered and separated into clear stanzas.",
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFFE0E7FF),
+                        fontSize = 17.sp,
+                        lineHeight = 29.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
             }
         }
-    } else if (showCreatorPage) {
+    }    } else if (showCreatorPage) {
         CreatorPage(onBack = { showCreatorPage = false })
     } else if (!showScoresPage) {
 
@@ -2823,6 +2883,7 @@ fun SongHubApp() {
                     OutlinedButton(
                         onClick = {
                             lyricsPreviewSong = song
+                            selectedSong = null
                             showLyricsDialog = true
                         },
                         modifier = Modifier.fillMaxWidth(),
