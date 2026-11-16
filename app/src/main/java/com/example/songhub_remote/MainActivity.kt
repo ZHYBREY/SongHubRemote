@@ -1,6 +1,8 @@
 package com.example.songhub_remote
 
 import android.os.Bundle
+import android.util.JsonReader
+import android.util.JsonToken
 import android.graphics.Bitmap
 import android.net.Uri
 import android.content.Intent
@@ -74,6 +76,76 @@ data class Song(
     val title: String,
     val artist: String
 )
+
+private fun cleanLyricsText(raw: String): String {
+    return raw
+        .replace(Regex("/+"), " ")
+        .lineSequence()
+        .map { it.replace(Regex("[\\t ]+"), " ").trim() }
+        .filter { it.isNotBlank() }
+        .joinToString("\\n")
+}
+
+private fun readLyricsForSong(
+    context: android.content.Context,
+    folderUri: String?,
+    songCode: String
+): String {
+    fun scan(input: java.io.InputStream): String {
+        JsonReader(input.bufferedReader()).use { reader ->
+            reader.isLenient = true
+            reader.beginArray()
+            while (reader.hasNext()) {
+                var code = ""
+                var lyrics = ""
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "code" -> code = reader.nextString()
+                        "lyrics" -> {
+                            lyrics = if (reader.peek() == JsonToken.NULL) {
+                                reader.nextNull()
+                                ""
+                            } else reader.nextString()
+                        }
+                        else -> reader.skipValue()
+                    }
+                }
+                reader.endObject()
+                if (code.trim().toLongOrNull()?.toString() == songCode.trim().toLongOrNull()?.toString()
+                    || code.trim() == songCode.trim()
+                ) {
+                    return cleanLyricsText(lyrics)
+                }
+            }
+            reader.endArray()
+        }
+        return ""
+    }
+
+    if (!folderUri.isNullOrBlank()) {
+        try {
+            val folder = getCatalogDirectory(context, Uri.parse(folderUri))
+            val file = folder.findFile("lyrics_catalog.json")
+                ?: folder.findFile("songs_catalog_with_lyrics.json")
+            if (file != null && file.exists()) {
+                val found = context.contentResolver.openInputStream(file.uri)?.use { scan(it) }.orEmpty()
+                if (found.isNotBlank()) return found
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    val assetNames = listOf("lyrics_catalog.json", "songs_catalog_with_lyrics.json")
+    for (name in assetNames) {
+        try {
+            val found = context.assets.open(name).use { scan(it) }
+            if (found.isNotBlank()) return found
+        } catch (_: Exception) {
+        }
+    }
+    return ""
+}
 
 data class ScoreEntry(
     val id: String,
@@ -858,6 +930,8 @@ fun SongHubApp() {
     var showShareCodeDialog by remember { mutableStateOf(false) }
     var showLyricsDialog by remember { mutableStateOf(false) }
     var lyricsPreviewSong by remember { mutableStateOf<Song?>(null) }
+    var lyricsPreviewText by remember { mutableStateOf("") }
+    var lyricsLoading by remember { mutableStateOf(false) }
 
     var folderUri by remember {
         mutableStateOf(prefs.getString("catalog_folder", null))
@@ -1754,7 +1828,11 @@ fun SongHubApp() {
                     )
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        "The scanned song lyrics will be displayed here, centered and separated into clear stanzas.",
+                        when {
+                            lyricsLoading -> "Loading lyrics..."
+                            lyricsPreviewText.isNotBlank() -> lyricsPreviewText
+                            else -> "Walang lyrics file o walang naka-save na lyrics para sa kantang ito."
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         color = Color(0xFFE0E7FF),
                         fontSize = 17.sp,
@@ -2883,8 +2961,16 @@ fun SongHubApp() {
                     OutlinedButton(
                         onClick = {
                             lyricsPreviewSong = song
+                            lyricsPreviewText = ""
+                            lyricsLoading = true
                             selectedSong = null
                             showLyricsDialog = true
+                            scope.launch {
+                                lyricsPreviewText = withContext(Dispatchers.IO) {
+                                    readLyricsForSong(context, folderUri, song.code)
+                                }
+                                lyricsLoading = false
+                            }
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Accent),
