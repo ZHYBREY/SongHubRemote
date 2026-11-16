@@ -1727,7 +1727,7 @@ fun SongHubApp() {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        "\"\${lyricsPreviewSong?.title ?: "Selected song"}\"\",
+                        "\"${lyricsPreviewSong?.title ?: "Selected song"}\"",
                         modifier = Modifier.fillMaxWidth(),
                         color = Color.White,
                         fontSize = 24.sp,
