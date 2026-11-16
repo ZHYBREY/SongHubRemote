@@ -79,7 +79,7 @@ data class Song(
 
 private fun cleanLyricsText(raw: String): String {
     return raw
-        .replace(Regex("/+"), " ")
+        .replace(Regex("[/\\\\]+"), " ")
         .lineSequence()
         .map { it.replace(Regex("[\\t ]+"), " ").trim() }
         .joinToString("\n")
