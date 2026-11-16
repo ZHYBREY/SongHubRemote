@@ -137,6 +137,16 @@ private fun readLyricsForSong(
         }
     }
 
+    // Automatically downloaded full lyrics catalog (kept in private app storage).
+    val downloadedLyrics = File(context.filesDir, "songs_catalog_with_lyrics.json")
+    if (downloadedLyrics.exists()) {
+        try {
+            val found = downloadedLyrics.inputStream().use { scan(it) }
+            if (found.isNotBlank()) return found
+        } catch (_: Exception) {
+        }
+    }
+
     val assetNames = listOf("lyrics_catalog.json", "songs_catalog_with_lyrics.json")
     for (name in assetNames) {
         try {
@@ -167,6 +177,11 @@ data class AppUpdateInfo(
 private const val CATALOG_URL =
     "https://raw.githubusercontent.com/ZHYBREY/SongHub-Catalog/main/app/src/main/assets/songs_catalog.json"
 
+private const val LYRICS_CATALOG_URL =
+    "https://github.com/ZHYBREY/SongHub-Catalog/releases/latest/download/songs_catalog_with_lyrics.json"
+
+private const val PREF_LYRICS_CATALOG_ETAG = "lyrics_catalog_etag"
+
 private const val APP_UPDATE_URL =
     "https://raw.githubusercontent.com/ZHYBREY/SongHub-Catalog/main/app_update.json"
 
@@ -190,6 +205,12 @@ private val appUpdateHttpClient = OkHttpClient.Builder()
     .connectTimeout(15, TimeUnit.SECONDS)
     .readTimeout(60, TimeUnit.SECONDS)
     .callTimeout(180, TimeUnit.SECONDS)
+    .build()
+
+private val lyricsHttpClient = OkHttpClient.Builder()
+    .connectTimeout(30, TimeUnit.SECONDS)
+    .readTimeout(180, TimeUnit.SECONDS)
+    .callTimeout(600, TimeUnit.SECONDS)
     .build()
 
 private fun getInstalledVersionCode(
@@ -655,6 +676,110 @@ private fun updateOnlineCatalog(
         }
 
         return updatedSongs
+    }
+}
+
+// DOWNLOAD OR REFRESH THE FULL LYRICS CATALOG FROM THE LATEST CATALOG RELEASE
+
+private fun updateLyricsCatalog(context: android.content.Context) {
+    val prefs = context.getSharedPreferences("songhub_prefs", android.content.Context.MODE_PRIVATE)
+    val target = File(context.filesDir, "songs_catalog_with_lyrics.json")
+    val temp = File(context.filesDir, "songs_catalog_with_lyrics.json.tmp")
+
+    // Check the remote asset metadata first so the 66 MB file is not downloaded every launch.
+    val headRequest = Request.Builder()
+        .url(LYRICS_CATALOG_URL)
+        .header("User-Agent", "SongHub-Remote")
+        .header("Cache-Control", "no-cache")
+        .head()
+        .build()
+
+    val remoteEtag: String?
+    val remoteLength: Long
+    lyricsHttpClient.newCall(headRequest).execute().use { response ->
+        if (!response.isSuccessful) {
+            throw Exception("Lyrics catalog check failed: HTTP ${response.code}")
+        }
+        remoteEtag = response.header("ETag")
+        remoteLength = response.body?.contentLength()
+            ?: response.header("Content-Length")?.toLongOrNull()
+            ?: -1L
+    }
+
+    val savedEtag = prefs.getString(PREF_LYRICS_CATALOG_ETAG, null)
+    if (target.exists() && target.length() > 1_000_000L &&
+        remoteEtag != null && remoteEtag == savedEtag
+    ) {
+        return
+    }
+
+    val getRequest = Request.Builder()
+        .url(LYRICS_CATALOG_URL)
+        .header("User-Agent", "SongHub-Remote")
+        .header("Accept", "application/octet-stream")
+        .build()
+
+    try {
+        lyricsHttpClient.newCall(getRequest).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw Exception("Lyrics catalog download failed: HTTP ${response.code}")
+            }
+
+            val body = response.body
+                ?: throw Exception("Walang natanggap na lyrics catalog.")
+
+            body.byteStream().use { input ->
+                temp.outputStream().buffered().use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
+
+        if (!temp.exists() || temp.length() < 1_000_000L) {
+            throw Exception("Incomplete o invalid ang lyrics catalog download.")
+        }
+        if (remoteLength > 0L && temp.length() != remoteLength) {
+            throw Exception("Hindi kumpleto ang lyrics catalog download.")
+        }
+
+        // Validate the JSON structure without loading the entire 66 MB file into memory.
+        temp.inputStream().buffered().use { input ->
+            JsonReader(input.reader()).use { reader ->
+                reader.isLenient = true
+                reader.beginArray()
+                if (!reader.hasNext()) throw Exception("Empty lyrics catalog.")
+                reader.beginObject()
+                var code = ""
+                var hasLyrics = false
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "code" -> code = reader.nextString()
+                        "lyrics" -> {
+                            hasLyrics = true
+                            reader.skipValue()
+                        }
+                        else -> reader.skipValue()
+                    }
+                }
+                reader.endObject()
+                reader.endArray()
+                if (code.isBlank() || !hasLyrics) {
+                    throw Exception("Invalid lyrics catalog structure.")
+                }
+            }
+        }
+
+        if (!temp.renameTo(target)) {
+            temp.copyTo(target, overwrite = true)
+            temp.delete()
+        }
+
+        if (remoteEtag != null) {
+            prefs.edit().putString(PREF_LYRICS_CATALOG_ETAG, remoteEtag).apply()
+        }
+    } catch (e: Exception) {
+        temp.delete()
+        throw e
     }
 }
 
@@ -1326,6 +1451,16 @@ fun SongHubApp() {
             } else {
                 message = "Online catalog unavailable: ${e.message}"
             }
+        }
+
+        // Download the lyrics database once, then only when the GitHub asset changes.
+        // This runs in the background and does not block the song list.
+        try {
+            withContext(Dispatchers.IO) {
+                updateLyricsCatalog(context)
+            }
+        } catch (_: Exception) {
+            // Keep the previous downloaded lyrics catalog available when offline.
         }
     }
 
