@@ -413,45 +413,20 @@ private fun saveScoreHistory(
         .apply()
 }
 
-private val Navy = Color(0xFF10271F)
+private val Navy = Color(0xFF10152B)
 private val TextWhite = Color.White
-private val Muted = Color(0xFFC9D7C5)
-private val Accent = Color(0xFFFFD166)
-private val AlertRed = Color(0xFFC7474F)
+private val Muted = Color(0xFFB5BED5)
+private val Accent = Color(0xFF42E8D4)
+private val AlertRed = Color(0xFFE45D68)
 
 private val songColors = listOf(
-    Color(0xFF3F8F68),
-    Color(0xFFC7474F),
-    Color(0xFFD8B56D),
-    Color(0xFF9E3542),
-    Color(0xFFE4B85C),
-    Color(0xFF6F9E69)
+    Color(0xFF16C7C7),
+    Color(0xFF9565F5),
+    Color(0xFF438BFA),
+    Color(0xFFEC65B5),
+    Color(0xFFFFA64D),
+    Color(0xFF42B883)
 )
-
-@Composable
-private fun ChristmasYearMark() {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("202", color = Color(0xFFFFD166), fontSize = 19.sp, fontWeight = FontWeight.Black, letterSpacing = (-1).sp)
-        Box {
-            Text("6", color = Color(0xFFFFD166), fontSize = 19.sp, fontWeight = FontWeight.Black)
-            Canvas(
-                modifier = Modifier.size(width = 23.dp, height = 18.dp)
-                    .align(Alignment.TopEnd).offset(x = 5.dp, y = (-8).dp)
-            ) {
-                val hat = androidx.compose.ui.graphics.Path().apply {
-                    moveTo(size.width * 0.12f, size.height * 0.82f)
-                    lineTo(size.width * 0.72f, size.height * 0.08f)
-                    lineTo(size.width * 0.86f, size.height * 0.82f)
-                    close()
-                }
-                drawPath(hat, Color(0xFFC7474F))
-                drawLine(Color(0xFFFFF5E6), Offset(size.width * 0.10f, size.height * 0.82f),
-                    Offset(size.width * 0.90f, size.height * 0.82f), size.height * 0.20f, cap = StrokeCap.Round)
-                drawCircle(Color(0xFFFFF5E6), size.height * 0.13f, Offset(size.width * 0.75f, size.height * 0.08f))
-            }
-        }
-    }
-}
 
 private val alphabet = ('A'..'Z').map { it.toString() }
 
@@ -842,7 +817,7 @@ class MainActivity : ComponentActivity() {
                 colorScheme = darkColorScheme(
                     primary = Accent,
                     background = Navy,
-                    surface = Color(0xFF1A382D),
+                    surface = Color(0xFF1B2340),
                     onPrimary = Navy,
                     onBackground = TextWhite,
                     onSurface = TextWhite
@@ -1660,7 +1635,7 @@ fun SongHubApp() {
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xFF18372B), Navy, Color(0xFF0B1B15))
+                        listOf(Color(0xFF101A33), Navy, Color(0xFF07101F))
                     )
                 )
                 .padding(horizontal = 20.dp, vertical = 18.dp)
@@ -1688,7 +1663,7 @@ fun SongHubApp() {
                     .fillMaxWidth()
                     .weight(1f)
                     .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFF244536))
+                    .background(Color(0xFF172744))
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 18.dp, vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -1705,7 +1680,7 @@ fun SongHubApp() {
                 Text(
                     lyricsPreviewSong?.artist.orEmpty(),
                     modifier = Modifier.fillMaxWidth(),
-                    color = Color(0xFFD9E3D1),
+                    color = Color(0xFFB9C6E8),
                     fontSize = 14.sp,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
@@ -1722,7 +1697,7 @@ fun SongHubApp() {
                 Text(
                     "The scanned song lyrics will be displayed here, centered and separated into clear stanzas.",
                     modifier = Modifier.fillMaxWidth(),
-                    color = Color(0xFFF0E9D8),
+                    color = Color(0xFFD5DDF2),
                     fontSize = 17.sp,
                     lineHeight = 29.sp,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -1739,9 +1714,9 @@ fun SongHubApp() {
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            Color(0xFF1B3B2E),
+                            Color(0xFF171B3D),
                             Navy,
-                            Color(0xFF10271F)
+                            Color(0xFF101D36)
                         )
                     )
                 )
@@ -1757,11 +1732,13 @@ fun SongHubApp() {
 
                 Column(modifier = Modifier.weight(1f)) {
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("SONGHUB", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 4.sp)
-                        Spacer(Modifier.width(7.dp))
-                        ChristmasYearMark()
-                    }
+                    Text(
+                        "SONGHUB",
+                        color = Accent,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 4.sp
+                    )
 
                     Text(
                         "SONGBOOK",
@@ -1774,15 +1751,15 @@ fun SongHubApp() {
                 Column(horizontalAlignment = Alignment.End) {
 
                     Text(
-                        "CHRISTMAS EDITION",
-                        color = Color(0xFFE8C879),
+                        "OFFLINE CATALOG",
+                        color = Color(0xFFB58BFF),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
                     )
 
                     Text(
                         "${filteredSongs.size} SONGS",
-                        color = Color(0xFFFFD166),
+                        color = Color(0xFFFFC66D),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
@@ -1797,7 +1774,7 @@ fun SongHubApp() {
                         vertical = 8.dp
                     ),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFB83C49),
+                        containerColor = Color(0xFF9168F5),
                         contentColor = Color.White
                     ),
                     shape = RoundedCornerShape(12.dp)
@@ -1815,7 +1792,7 @@ fun SongHubApp() {
                     onClick = { showCreatorPage = true },
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF9E3542),
+                        containerColor = Color(0xFFEC65B5),
                         contentColor = Color.White
                     ),
                     shape = RoundedCornerShape(12.dp)
@@ -1831,7 +1808,7 @@ fun SongHubApp() {
                     modifier = Modifier
                         .size(43.dp)
                         .background(
-                            Color(0xFF294638),
+                            Color(0xFF293653),
                             RoundedCornerShape(13.dp)
                         )
                         .clickable {
@@ -1874,7 +1851,7 @@ fun SongHubApp() {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF203D31)
+                    containerColor = Color(0xFF202B4B)
                 ),
                 shape = RoundedCornerShape(15.dp)
             ) {
@@ -1891,7 +1868,7 @@ fun SongHubApp() {
                                 .size(9.dp)
                                 .background(
                                     if (connected) Accent
-                                    else Color(0xFFE8C879),
+                                    else Color(0xFFFFB454),
                                     RoundedCornerShape(50)
                                 )
                         )
@@ -1917,7 +1894,7 @@ fun SongHubApp() {
                         ) {
                             Text(
                                 if (showPcSettings) "HIDE ▲" else "EDIT ▼",
-                                color = Color(0xFFE8C879),
+                                color = Color(0xFFB58BFF),
                                 fontSize = 10.sp
                             )
                         }
@@ -2026,7 +2003,7 @@ fun SongHubApp() {
                     focusedTextColor = TextWhite,
                     unfocusedTextColor = TextWhite,
                     focusedBorderColor = Accent,
-                    unfocusedBorderColor = Color(0xFF718A70),
+                    unfocusedBorderColor = Color(0xFF52618D),
                     cursorColor = Accent
                 )
             )
@@ -2219,7 +2196,7 @@ fun SongHubApp() {
                     .fillMaxWidth()
                     .padding(bottom = 8.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF203D31)
+                    containerColor = Color(0xFF202B4B)
                 ),
                 shape = RoundedCornerShape(15.dp)
             ) {
@@ -2238,7 +2215,7 @@ fun SongHubApp() {
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(5.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFE3BE72),
+                            containerColor = Color(0xFF36CFC1),
                             contentColor = Navy
                         )
                     ) {
@@ -2257,7 +2234,7 @@ fun SongHubApp() {
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(5.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFB83C49)
+                            containerColor = Color(0xFF9168F5)
                         )
                     ) {
                         Text(
@@ -2329,7 +2306,7 @@ fun SongHubApp() {
             onDismissRequest = {
                 showCatalogSettings = false
             },
-            containerColor = Color(0xFF1E3A2F),
+            containerColor = Color(0xFF222E50),
             title = {
                 Text(
                     "SONGHUB SETTINGS",
@@ -2394,11 +2371,11 @@ fun SongHubApp() {
                         Text("▦  SHARE CODE", fontWeight = FontWeight.ExtraBold)
                     }
 
-                    HorizontalDivider(color = Color(0xFF718A70))
+                    HorizontalDivider(color = Color(0xFF52618D))
 
                     Text(
                         "ACTIVE CATALOG",
-                        color = Color(0xFFE8C879),
+                        color = Color(0xFFB58BFF),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -2415,7 +2392,7 @@ fun SongHubApp() {
 
                     Text(
                         "TOTAL SONGS: ${songs.size}",
-                        color = Color(0xFFFFD166),
+                        color = Color(0xFFFFC66D),
                         fontSize = 15.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
@@ -2426,7 +2403,7 @@ fun SongHubApp() {
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF345341)
+                            containerColor = Color(0xFF34466F)
                         )
                     ) {
                         Text("📁  CHOOSE DOCUMENTS FOLDER")
@@ -2449,7 +2426,7 @@ fun SongHubApp() {
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFB83C49)
+                            containerColor = Color(0xFF9168F5)
                         )
                     ) {
                         Text("＋  IMPORT / REPLACE JSON")
@@ -2511,12 +2488,12 @@ fun SongHubApp() {
                     if (pendingNewSongCount > 0) {
                         Text(
                             "$pendingNewSongCount new song(s) detected from GitHub. Tap UPDATE SONG CATALOG to acknowledge.",
-                            color = Color(0xFFE16B68),
+                            color = Color(0xFFFFA0AA),
                             fontSize = 11.sp
                         )
                     }
 
-                    HorizontalDivider(color = Color(0xFF718A70))
+                    HorizontalDivider(color = Color(0xFF52618D))
 
                     // APP UPDATE HEADING WITH VERSION INDICATOR
 
@@ -2526,7 +2503,7 @@ fun SongHubApp() {
                     ) {
                         Text(
                             "APP UPDATE",
-                            color = Color(0xFFE8C879),
+                            color = Color(0xFFB58BFF),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier.weight(1f)
@@ -2548,7 +2525,7 @@ fun SongHubApp() {
                             enabled = !checkingAppUpdate && !downloadingAppUpdate,
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF345341)
+                                containerColor = Color(0xFF34466F)
                             )
                         ) {
                             Text(
@@ -2625,7 +2602,7 @@ fun SongHubApp() {
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF6F9E69),
+                                containerColor = Color(0xFF36B879),
                                 contentColor = Color.White
                             )
                         ) {
@@ -2642,7 +2619,7 @@ fun SongHubApp() {
                         fontSize = 10.sp
                     )
 
-                    HorizontalDivider(color = Color(0xFF718A70))
+                    HorizontalDivider(color = Color(0xFF52618D))
 
                     Text(
                         "Automatic na iche-check ang GitHub catalog tuwing bubuksan ang app. Gagana pa rin ang saved catalog kapag offline.",
@@ -2668,7 +2645,7 @@ fun SongHubApp() {
         val qrBitmap = remember { createShareCodeQr(SHARE_CODE_URL).asImageBitmap() }
         AlertDialog(
             onDismissRequest = { showShareCodeDialog = false },
-            containerColor = Color(0xFF1E3A2F),
+            containerColor = Color(0xFF222E50),
             title = {
                 Text("SONGHUB SHARE CODE", color = Accent, fontWeight = FontWeight.ExtraBold)
             },
@@ -2715,7 +2692,7 @@ fun SongHubApp() {
                     showAppUpdateDialog = false
                 }
             },
-            containerColor = Color(0xFF1E3A2F),
+            containerColor = Color(0xFF222E50),
             title = {
                 Text(
                     "SONGHUB APP UPDATE",
@@ -2784,7 +2761,7 @@ fun SongHubApp() {
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF6F9E69)
+                                containerColor = Color(0xFF36B879)
                             )
                         ) {
                             Text("INSTALL UPDATE")
@@ -2813,7 +2790,7 @@ fun SongHubApp() {
             onDismissRequest = {
                 selectedSong = null
             },
-            containerColor = Color(0xFF1E3A2F),
+            containerColor = Color(0xFF222E50),
             title = {
                 Text(
                     song.title,
@@ -2828,7 +2805,7 @@ fun SongHubApp() {
 
                     Text(
                         song.artist,
-                        color = Color(0xFFD9E3D1),
+                        color = Color(0xFFB9C6E8),
                         fontSize = 16.sp
                     )
 
@@ -2865,7 +2842,7 @@ fun SongHubApp() {
                     },
                     enabled = connected,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFE3BE72),
+                        containerColor = Color(0xFF36CFC1),
                         contentColor = Navy
                     )
                 ) {
@@ -2888,7 +2865,7 @@ fun SongHubApp() {
                     ) {
                         Text(
                             "RESERVE",
-                            color = Color(0xFFE8C879)
+                            color = Color(0xFFB58BFF)
                         )
                     }
 
@@ -2920,7 +2897,7 @@ fun AlphabetButton(
     Box(
         modifier = Modifier
             .background(
-                color = if (selected) Accent else Color(0xFF294638),
+                color = if (selected) Accent else Color(0xFF293653),
                 shape = RoundedCornerShape(9.dp)
             )
             .clickable {
@@ -2963,7 +2940,7 @@ fun SongCard(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                Color(0xFF203D31),
+                Color(0xFF202944),
                 RoundedCornerShape(13.dp)
             )
             .clickable {
@@ -3094,9 +3071,9 @@ fun ScoresPage(
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color(0xFF1B3B2E),
+                        Color(0xFF171B3D),
                         Navy,
-                        Color(0xFF10271F)
+                        Color(0xFF101D36)
                     )
                 )
             )
@@ -3132,7 +3109,7 @@ fun ScoresPage(
 
             Text(
                 "${entries.size}",
-                color = Color(0xFFFFD166),
+                color = Color(0xFFFFC66D),
                 fontWeight = FontWeight.ExtraBold
             )
 
@@ -3145,7 +3122,7 @@ fun ScoresPage(
                     vertical = 5.dp
                 ),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF294638),
+                    containerColor = Color(0xFF293653),
                     contentColor = Accent
                 ),
                 shape = RoundedCornerShape(10.dp)
@@ -3263,7 +3240,7 @@ fun ScoresPage(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Color(0xFF294638),
+                    Color(0xFF293653),
                     RoundedCornerShape(10.dp)
                 )
                 .padding(
@@ -3304,7 +3281,7 @@ fun ScoresPage(
 
                     Text(
                         "♪",
-                        color = Color(0xFFB83C49),
+                        color = Color(0xFF9168F5),
                         fontSize = 48.sp
                     )
 
@@ -3346,7 +3323,7 @@ fun ScoresPage(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(
-                                Color(0xFF203D31),
+                                Color(0xFF202944),
                                 RoundedCornerShape(12.dp)
                             )
                             .padding(
@@ -3372,7 +3349,7 @@ fun ScoresPage(
                                 entry.artist.ifBlank {
                                     "Unknown artist"
                                 },
-                                color = Color(0xFFD9E3D1),
+                                color = Color(0xFFB9C6E8),
                                 fontSize = 11.sp,
                                 maxLines = 1
                             )
@@ -3403,7 +3380,7 @@ fun ScoresPage(
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFFB83C49),
+                containerColor = Color(0xFFB93D55),
                 contentColor = Color.White
             ),
             shape = RoundedCornerShape(12.dp)
@@ -3423,7 +3400,7 @@ fun ScoresPage(
             onDismissRequest = {
                 showClearConfirmation = false
             },
-            containerColor = Color(0xFF1E3A2F),
+            containerColor = Color(0xFF222E50),
             title = {
                 Text(
                     "CLEAR ALL SCORES?",
@@ -3446,7 +3423,7 @@ fun ScoresPage(
                 ) {
                     Text(
                         "CLEAR",
-                        color = Color(0xFFE16B68),
+                        color = Color(0xFFFF7184),
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -3483,7 +3460,7 @@ private fun ScoreSortButton(
             if (selected) {
                 Accent.copy(alpha = 0.18f)
             } else {
-                Color(0xFF294638)
+                Color(0xFF293653)
             },
             RoundedCornerShape(9.dp)
         ),
@@ -3521,7 +3498,7 @@ fun CreatorPage(onBack: () -> Unit) {
         Box(
             modifier = Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
-                    listOf(Color(0xFF0B1B15), Color(0xFF18372B), Color(0xFF10271F))
+                    listOf(Color(0xFF090D24), Color(0xFF17113A), Color(0xFF071C32))
                 )
             )
         )
@@ -3532,7 +3509,7 @@ fun CreatorPage(onBack: () -> Unit) {
             val pinkCenter = Offset(w * (0.22f + 0.19f * kotlin.math.sin(wave)), h * (0.20f + 0.10f * kotlin.math.cos(wave)))
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(Color(0xCCB83C49), Color(0x665A8B6A), Color.Transparent),
+                    colors = listOf(Color(0xCCFF36C9), Color(0x665E35FF), Color.Transparent),
                     center = pinkCenter,
                     radius = w * 0.72f
                 ),
@@ -3542,7 +3519,7 @@ fun CreatorPage(onBack: () -> Unit) {
             val blueCenter = Offset(w * (0.78f + 0.17f * kotlin.math.cos(wave + 1.2f)), h * (0.72f + 0.12f * kotlin.math.sin(wave + 1.2f)))
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(Color(0xAAE8C879), Color(0x55527B59), Color.Transparent),
+                    colors = listOf(Color(0xAA00E5FF), Color(0x554A5BFF), Color.Transparent),
                     center = blueCenter,
                     radius = w * 0.78f
                 ),
@@ -3555,47 +3532,13 @@ fun CreatorPage(onBack: () -> Unit) {
             )
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(Color(0x888DBA83), Color.Transparent),
+                    colors = listOf(Color(0x887CFF6B), Color.Transparent),
                     center = greenCenter,
                     radius = w * 0.42f
                 ),
                 radius = w * 0.42f,
                 center = greenCenter
             )
-
-            // Soft falling Christmas snow layered over the animated neon smoke.
-            for (i in 0 until 42) {
-                val seed = i.toFloat()
-                val xBase = ((i * 73) % 997) / 997f * w
-                val fall = (seed * 97f + phase * h * 1.35f) % (h + 30f)
-                val drift = kotlin.math.sin(phase * 6.2831855f + seed * 1.7f) * (10f + (i % 5) * 3f)
-                val snowX = (xBase + drift).coerceIn(3f, w - 3f)
-                val snowY = fall - 15f
-                val radius = 1.3f + (i % 4) * 0.55f
-                val snowColor = Color(0xFFFFF7E8).copy(alpha = 0.30f + (i % 4) * 0.12f)
-
-                drawCircle(
-                    color = snowColor,
-                    radius = radius,
-                    center = Offset(snowX, snowY)
-                )
-
-                if (i % 3 == 0) {
-                    val arm = radius * 2.4f
-                    drawLine(
-                        color = snowColor.copy(alpha = 0.65f),
-                        start = Offset(snowX - arm, snowY - arm),
-                        end = Offset(snowX + arm, snowY + arm),
-                        strokeWidth = 0.8f
-                    )
-                    drawLine(
-                        color = snowColor.copy(alpha = 0.65f),
-                        start = Offset(snowX - arm, snowY + arm),
-                        end = Offset(snowX + arm, snowY - arm),
-                        strokeWidth = 0.8f
-                    )
-                }
-            }
         }
 
         Column(
@@ -3607,7 +3550,7 @@ fun CreatorPage(onBack: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = onBack) {
-                    Text("‹ BACK", color = Color(0xFFE8C879), fontWeight = FontWeight.ExtraBold)
+                    Text("‹ BACK", color = Color(0xFF55F4E6), fontWeight = FontWeight.ExtraBold)
                 }
                 Spacer(Modifier.weight(1f))
                 Text("CREATOR", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
@@ -3619,11 +3562,11 @@ fun CreatorPage(onBack: () -> Unit) {
             Box(
                 modifier = Modifier.size(148.dp)
                     .background(
-                        Brush.linearGradient(listOf(Color(0xFFC7474F), Color(0xFFE8C879), Color(0xFFE8C879))),
+                        Brush.linearGradient(listOf(Color(0xFFFF42C6), Color(0xFF8B5CFF), Color(0xFF00E5FF))),
                         CircleShape
                     )
                     .padding(4.dp)
-                    .background(Color(0xFF10271F), CircleShape),
+                    .background(Color(0xFF10152B), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Image(
@@ -3646,7 +3589,7 @@ fun CreatorPage(onBack: () -> Unit) {
             Spacer(Modifier.height(6.dp))
             Text(
                 "CREATOR OF SONGHUB",
-                color = Color(0xFFE8C879),
+                color = Color(0xFF62F7E8),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 2.sp
@@ -3655,7 +3598,7 @@ fun CreatorPage(onBack: () -> Unit) {
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xE81E3A2F)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xE817203F)),
                 shape = RoundedCornerShape(22.dp)
             ) {
                 Column(
@@ -3664,7 +3607,7 @@ fun CreatorPage(onBack: () -> Unit) {
                 ) {
                     Text(
                         "A NOTE FROM THE CREATOR",
-                        color = Color(0xFFE16B68),
+                        color = Color(0xFFFF83D8),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.5.sp
@@ -3672,7 +3615,7 @@ fun CreatorPage(onBack: () -> Unit) {
                     Spacer(Modifier.height(10.dp))
                     Text(
                         "THANK YOU!",
-                        color = Color(0xFFFFD166),
+                        color = Color(0xFFFFD36E),
                         fontSize = 25.sp,
                         fontWeight = FontWeight.Black,
                         letterSpacing = 2.sp
@@ -3680,7 +3623,7 @@ fun CreatorPage(onBack: () -> Unit) {
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "Thank you for choosing SongHub Remote. I truly appreciate your support. I hope this app makes your music experience easier and more enjoyable. Keep enjoying the music, and welcome to the SongHub community!",
-                        color = Color(0xFFF0E9D8),
+                        color = Color(0xFFE2E9FF),
                         fontSize = 13.sp,
                         fontStyle = FontStyle.Italic,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -3689,7 +3632,7 @@ fun CreatorPage(onBack: () -> Unit) {
                     Spacer(Modifier.height(15.dp))
                     Text(
                         "WITH GRATITUDE,",
-                        color = Color(0xFFE8C879),
+                        color = Color(0xFF62F7E8),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.4.sp
@@ -3702,11 +3645,11 @@ fun CreatorPage(onBack: () -> Unit) {
                         letterSpacing = 1.sp
                     )
                     Spacer(Modifier.height(14.dp))
-                    HorizontalDivider(color = Color(0x66E8C879))
+                    HorizontalDivider(color = Color(0x6655F4E6))
                     Spacer(Modifier.height(13.dp))
                     Text(
                         "OPTIONAL DONATION",
-                        color = Color(0xFFFFD166),
+                        color = Color(0xFFFFD36E),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 1.5.sp
@@ -3715,7 +3658,7 @@ fun CreatorPage(onBack: () -> Unit) {
                     Button(
                         onClick = { showQrDialog = true },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFB83C49),
+                            containerColor = Color(0xFF0878E8),
                             contentColor = Color.White
                         ),
                         shape = RoundedCornerShape(14.dp),
@@ -3726,7 +3669,7 @@ fun CreatorPage(onBack: () -> Unit) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Thank you for supporting SongHub!",
-                        color = Color(0xFFD9E3D1),
+                        color = Color(0xFFB9C6E8),
                         fontSize = 11.sp,
                         fontStyle = FontStyle.Italic
                     )
@@ -3743,10 +3686,10 @@ fun CreatorPage(onBack: () -> Unit) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
-                color = Color(0xFF1E3A2F),
+                color = Color(0xFF111A35),
                 border = androidx.compose.foundation.BorderStroke(
                     1.dp,
-                    Color(0xFFE8C879)
+                    Color(0xFF55F4E6)
                 )
             ) {
                 Column(
@@ -3755,7 +3698,7 @@ fun CreatorPage(onBack: () -> Unit) {
                 ) {
                     Text(
                         "SUPPORT SONGHUB",
-                        color = Color(0xFFFFD166),
+                        color = Color(0xFFFFD36E),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.2.sp
@@ -3763,7 +3706,7 @@ fun CreatorPage(onBack: () -> Unit) {
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "Scan the GCash QR code",
-                        color = Color(0xFFF0E9D8),
+                        color = Color(0xFFD8E2FF),
                         fontSize = 12.sp
                     )
                     Spacer(Modifier.height(12.dp))
@@ -3776,14 +3719,14 @@ fun CreatorPage(onBack: () -> Unit) {
                     Spacer(Modifier.height(12.dp))
                     Text(
                         "Thank you for supporting SongHub Remote!",
-                        color = Color(0xFFE8C879),
+                        color = Color(0xFF62F7E8),
                         fontSize = 12.sp,
                         fontStyle = FontStyle.Italic,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                     Spacer(Modifier.height(10.dp))
                     TextButton(onClick = { showQrDialog = false }) {
-                        Text("CLOSE", color = Color(0xFFE16B68), fontWeight = FontWeight.Black)
+                        Text("CLOSE", color = Color(0xFFFF83D8), fontWeight = FontWeight.Black)
                     }
                 }
             }
