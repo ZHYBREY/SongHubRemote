@@ -1657,20 +1657,6 @@ fun SongHubApp() {
             }
 
             Spacer(Modifier.height(24.dp))
-            Text(
-                lyricsPreviewSong?.title ?: "Selected song",
-                color = TextWhite,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.ExtraBold
-            )
-            Spacer(Modifier.height(5.dp))
-            Text(
-                lyricsPreviewSong?.artist.orEmpty(),
-                color = Color(0xFFB9C6E8),
-                fontSize = 16.sp
-            )
-            Spacer(Modifier.height(20.dp))
-
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1678,20 +1664,42 @@ fun SongHubApp() {
                     .clip(RoundedCornerShape(18.dp))
                     .background(Color(0xFF172744))
                     .verticalScroll(rememberScrollState())
-                    .padding(20.dp)
+                    .padding(horizontal = 18.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    "OFFLINE LYRICS READY SOON",
+                    ""${lyricsPreviewSong?.title ?: "Selected song"}"",
+                    modifier = Modifier.fillMaxWidth(),
+                    color = TextWhite,
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    lyricsPreviewSong?.artist.orEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFFB9C6E8),
+                    fontSize = 14.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(Modifier.height(26.dp))
+                Text(
+                    "OFFLINE LYRICS WILL APPEAR HERE",
+                    modifier = Modifier.fillMaxWidth(),
                     color = Accent,
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
                 Text(
-                    "This is the dedicated lyrics page. The scanned lyrics catalog will be connected here after the MIDI scan finishes.",
+                    "The scanned song lyrics will be displayed here, centered and separated into clear stanzas.",
+                    modifier = Modifier.fillMaxWidth(),
                     color = Color(0xFFD5DDF2),
-                    fontSize = 16.sp,
-                    lineHeight = 26.sp
+                    fontSize = 17.sp,
+                    lineHeight = 29.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
         }
