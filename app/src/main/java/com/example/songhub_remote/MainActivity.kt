@@ -1764,7 +1764,7 @@ fun SongHubApp() {
                 }
             }
         }
-    }    } else if (showCreatorPage) {
+    } else if (showCreatorPage) {
         CreatorPage(onBack = { showCreatorPage = false })
     } else if (!showScoresPage) {
 
