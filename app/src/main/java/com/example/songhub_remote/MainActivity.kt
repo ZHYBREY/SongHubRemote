@@ -178,7 +178,7 @@ private const val CATALOG_URL =
     "https://raw.githubusercontent.com/ZHYBREY/SongHub-Catalog/main/app/src/main/assets/songs_catalog.json"
 
 private const val LYRICS_CATALOG_URL =
-    "https://github.com/ZHYBREY/SongHub-Catalog/releases/latest/download/songs_catalog_with_lyrics.json"
+    "https://github.com/ZHYBREY/SongHub-Catalog/releases/latest/download/songs_catalog_with_lyrics.1.json"
 
 private const val PREF_LYRICS_CATALOG_ETAG = "lyrics_catalog_etag"
 
