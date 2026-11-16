@@ -3771,12 +3771,21 @@ fun CreatorPage(onBack: () -> Unit) {
                         fontSize = 12.sp
                     )
                     Spacer(Modifier.height(12.dp))
-                    Image(
-                        painter = painterResource(id = R.drawable.gcash_qr),
-                        contentDescription = "GCash donation QR code",
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)),
-                        contentScale = ContentScale.Fit
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF202B4A))
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "GCash QR image is not uploaded yet.",
+                            color = Color(0xFFD8E2FF),
+                            fontSize = 12.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
                     Spacer(Modifier.height(12.dp))
                     Text(
                         "Thank you for supporting SongHub Remote!",
