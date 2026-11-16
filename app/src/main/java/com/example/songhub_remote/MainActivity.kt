@@ -854,6 +854,8 @@ fun SongHubApp() {
     var showPcSettings by remember { mutableStateOf(false) }
     var showCatalogSettings by remember { mutableStateOf(false) }
     var showShareCodeDialog by remember { mutableStateOf(false) }
+    var showLyricsDialog by remember { mutableStateOf(false) }
+    var lyricsPreviewSong by remember { mutableStateOf<Song?>(null) }
 
     var folderUri by remember {
         mutableStateOf(prefs.getString("catalog_folder", null))
@@ -926,8 +928,9 @@ fun SongHubApp() {
         )
     }
 
-    BackHandler(enabled = showShareCodeDialog || showScoresPage || showCreatorPage) {
+    BackHandler(enabled = showLyricsDialog || showShareCodeDialog || showScoresPage || showCreatorPage) {
         when {
+            showLyricsDialog -> showLyricsDialog = false
             showShareCodeDialog -> showShareCodeDialog = false
             showCreatorPage -> showCreatorPage = false
             showScoresPage -> showScoresPage = false
@@ -2703,6 +2706,75 @@ fun SongHubApp() {
         )
     }
 
+    // OFFLINE LYRICS VIEWER (catalog will be connected after the MIDI scan)
+    if (showLyricsDialog) {
+        val song = lyricsPreviewSong
+        Dialog(onDismissRequest = { showLyricsDialog = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 720.dp)
+                    .background(Color(0xFF101A33), RoundedCornerShape(22.dp))
+                    .padding(18.dp)
+            ) {
+                Text(
+                    "SONGHUB  •  LYRICS",
+                    color = Accent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    song?.title ?: "Selected song",
+                    color = TextWhite,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    song?.artist ?: "",
+                    color = Color(0xFFB9C6E8),
+                    fontSize = 14.sp
+                )
+                Spacer(Modifier.height(16.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .heightIn(min = 220.dp, max = 500.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFF172744))
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        "OFFLINE LYRICS READY SOON",
+                        color = Accent,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "The lyrics viewer is in place. The scanned lyrics catalog will be connected here after the MIDI scan finishes.",
+                        color = Color(0xFFD5DDF2),
+                        fontSize = 14.sp,
+                        lineHeight = 22.sp
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
+                Button(
+                    onClick = { showLyricsDialog = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Accent,
+                        contentColor = Navy
+                    )
+                ) {
+                    Text("BACK TO SONG", fontWeight = FontWeight.ExtraBold)
+                }
+            }
+        }
+    }
+
     // SELECTED SONG DIALOG
 
     selectedSong?.let { song ->
@@ -2738,6 +2810,20 @@ fun SongHubApp() {
                         fontSize = 20.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            lyricsPreviewSong = song
+                            showLyricsDialog = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Accent),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Accent)
+                    ) {
+                        Text("♫  LYRICS", fontWeight = FontWeight.ExtraBold)
+                    }
                 }
             },
             confirmButton = {
