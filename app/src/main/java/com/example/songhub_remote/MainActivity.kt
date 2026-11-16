@@ -1628,7 +1628,74 @@ fun SongHubApp() {
 
     // MAIN SONGBOOK PAGE
 
-    if (showCreatorPage) {
+    if (showLyricsDialog) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF101A33), Navy, Color(0xFF07101F))
+                    )
+                )
+                .padding(horizontal = 20.dp, vertical = 18.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = { showLyricsDialog = false }) {
+                    Text("‹  BACK", color = Accent, fontWeight = FontWeight.ExtraBold)
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "SONGHUB LYRICS",
+                    color = Accent,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 2.sp
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+            Text(
+                lyricsPreviewSong?.title ?: "Selected song",
+                color = TextWhite,
+                fontSize = 26.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+            Spacer(Modifier.height(5.dp))
+            Text(
+                lyricsPreviewSong?.artist.orEmpty(),
+                color = Color(0xFFB9C6E8),
+                fontSize = 16.sp
+            )
+            Spacer(Modifier.height(20.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xFF172744))
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp)
+            ) {
+                Text(
+                    "OFFLINE LYRICS READY SOON",
+                    color = Accent,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "This is the dedicated lyrics page. The scanned lyrics catalog will be connected here after the MIDI scan finishes.",
+                    color = Color(0xFFD5DDF2),
+                    fontSize = 16.sp,
+                    lineHeight = 26.sp
+                )
+            }
+        }
+    } else if (showCreatorPage) {
         CreatorPage(onBack = { showCreatorPage = false })
     } else if (!showScoresPage) {
 
@@ -2704,75 +2771,6 @@ fun SongHubApp() {
                 }
             }
         )
-    }
-
-    // OFFLINE LYRICS VIEWER (catalog will be connected after the MIDI scan)
-    if (showLyricsDialog) {
-        val song = lyricsPreviewSong
-        Dialog(onDismissRequest = { showLyricsDialog = false }) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 720.dp)
-                    .background(Color(0xFF101A33), RoundedCornerShape(22.dp))
-                    .padding(18.dp)
-            ) {
-                Text(
-                    "SONGHUB  •  LYRICS",
-                    color = Accent,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    song?.title ?: "Selected song",
-                    color = TextWhite,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-                Text(
-                    song?.artist ?: "",
-                    color = Color(0xFFB9C6E8),
-                    fontSize = 14.sp
-                )
-                Spacer(Modifier.height(16.dp))
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        .heightIn(min = 220.dp, max = 500.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color(0xFF172744))
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        "OFFLINE LYRICS READY SOON",
-                        color = Accent,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "The lyrics viewer is in place. The scanned lyrics catalog will be connected here after the MIDI scan finishes.",
-                        color = Color(0xFFD5DDF2),
-                        fontSize = 14.sp,
-                        lineHeight = 22.sp
-                    )
-                }
-                Spacer(Modifier.height(14.dp))
-                Button(
-                    onClick = { showLyricsDialog = false },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Accent,
-                        contentColor = Navy
-                    )
-                ) {
-                    Text("BACK TO SONG", fontWeight = FontWeight.ExtraBold)
-                }
-            }
-        }
     }
 
     // SELECTED SONG DIALOG
