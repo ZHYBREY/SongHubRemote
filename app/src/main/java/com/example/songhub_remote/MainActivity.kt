@@ -744,31 +744,51 @@ private fun updateLyricsCatalog(context: android.content.Context) {
             throw Exception("Hindi kumpleto ang lyrics catalog download.")
         }
 
-        // Validate the JSON structure without loading the entire 66 MB file into memory.
+        // Validate every entry without loading the entire catalog into memory.
+        var hasValidEntry = false
+
         temp.inputStream().buffered().use { input ->
             JsonReader(input.reader()).use { reader ->
                 reader.isLenient = true
                 reader.beginArray()
-                if (!reader.hasNext()) throw Exception("Empty lyrics catalog.")
-                reader.beginObject()
-                var code = ""
-                var hasLyrics = false
+
                 while (reader.hasNext()) {
-                    when (reader.nextName()) {
-                        "code" -> code = reader.nextString()
-                        "lyrics" -> {
-                            hasLyrics = true
-                            reader.skipValue()
+                    reader.beginObject()
+
+                    var code = ""
+                    var hasLyrics = false
+
+                    while (reader.hasNext()) {
+                        when (reader.nextName()) {
+                            "code" -> {
+                                code = if (reader.peek() == JsonToken.NULL) {
+                                    reader.nextNull()
+                                    ""
+                                } else {
+                                    reader.nextString()
+                                }
+                            }
+                            "lyrics" -> {
+                                hasLyrics = true
+                                reader.skipValue()
+                            }
+                            else -> reader.skipValue()
                         }
-                        else -> reader.skipValue()
+                    }
+
+                    reader.endObject()
+
+                    if (code.isNotBlank() && hasLyrics) {
+                        hasValidEntry = true
                     }
                 }
-                reader.endObject()
+
                 reader.endArray()
-                if (code.isBlank() || !hasLyrics) {
-                    throw Exception("Invalid lyrics catalog structure.")
-                }
             }
+        }
+
+        if (!hasValidEntry) {
+            throw Exception("Invalid lyrics catalog structure.")
         }
 
         if (!temp.renameTo(target)) {
