@@ -694,17 +694,19 @@ private fun updateLyricsCatalog(context: android.content.Context) {
         .head()
         .build()
 
-    val remoteEtag: String?
-    val remoteLength: Long
-    lyricsHttpClient.newCall(headRequest).execute().use { response ->
+    val remoteMetadata = lyricsHttpClient.newCall(headRequest).execute().use { response ->
         if (!response.isSuccessful) {
             throw Exception("Lyrics catalog check failed: HTTP ${response.code}")
         }
-        remoteEtag = response.header("ETag")
-        remoteLength = response.body?.contentLength()
-            ?: response.header("Content-Length")?.toLongOrNull()
-            ?: -1L
+        Pair(
+            response.header("ETag"),
+            response.body?.contentLength()
+                ?: response.header("Content-Length")?.toLongOrNull()
+                ?: -1L
+        )
     }
+    val remoteEtag = remoteMetadata.first
+    val remoteLength = remoteMetadata.second
 
     val savedEtag = prefs.getString(PREF_LYRICS_CATALOG_ETAG, null)
     if (target.exists() && target.length() > 1_000_000L &&
