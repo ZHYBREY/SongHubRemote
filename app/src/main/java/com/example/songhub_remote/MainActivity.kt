@@ -78,6 +78,90 @@ data class Song(
     val artist: String
 )
 
+data class LyricsSearchEntry(
+    val song: Song,
+    val lyrics: String
+)
+
+private fun normalizeSongCode(code: String): String {
+    val trimmed = code.trim()
+    return trimmed.toLongOrNull()?.toString() ?: trimmed.lowercase(Locale.ROOT)
+}
+
+private fun readLyricsSearchMap(
+    context: android.content.Context,
+    folderUri: String?
+): Map<String, String> {
+    fun scan(input: java.io.InputStream): Map<String, String> {
+        val result = mutableMapOf<String, String>()
+        JsonReader(input.bufferedReader()).use { reader ->
+            reader.isLenient = true
+            reader.beginArray()
+            while (reader.hasNext()) {
+                var code = ""
+                var lyrics = ""
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "code" -> {
+                            code = if (reader.peek() == JsonToken.NULL) {
+                                reader.nextNull()
+                                ""
+                            } else reader.nextString()
+                        }
+                        "lyrics" -> {
+                            lyrics = if (reader.peek() == JsonToken.NULL) {
+                                reader.nextNull()
+                                ""
+                            } else reader.nextString()
+                        }
+                        else -> reader.skipValue()
+                    }
+                }
+                reader.endObject()
+                if (code.isNotBlank() && lyrics.isNotBlank()) {
+                    result[normalizeSongCode(code)] = cleanLyricsText(lyrics)
+                }
+            }
+            reader.endArray()
+        }
+        return result
+    }
+
+    val assetNames = listOf("songs_catalog_with_lyrics.json", "lyrics_catalog.json")
+    for (name in assetNames) {
+        try {
+            val found = context.assets.open(name).use { scan(it) }
+            if (found.isNotEmpty()) return found
+        } catch (_: Exception) {
+        }
+    }
+
+    if (!folderUri.isNullOrBlank()) {
+        try {
+            val folder = getCatalogDirectory(context, Uri.parse(folderUri))
+            val file = folder.findFile("lyrics_catalog.json")
+                ?: folder.findFile("songs_catalog_with_lyrics.json")
+            if (file != null && file.exists()) {
+                val found = context.contentResolver.openInputStream(file.uri)
+                    ?.use { scan(it) }.orEmpty()
+                if (found.isNotEmpty()) return found
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    val downloaded = File(context.filesDir, "songs_catalog_with_lyrics.json")
+    if (downloaded.exists()) {
+        try {
+            val found = downloaded.inputStream().use { scan(it) }
+            if (found.isNotEmpty()) return found
+        } catch (_: Exception) {
+        }
+    }
+    return emptyMap()
+}
+
 private fun cleanLyricsText(raw: String): String {
     return raw
         .replace(Regex("[/\\\\]+"), " ")
@@ -1166,12 +1250,47 @@ fun SongHubApp() {
     var shareQrMessage by remember { mutableStateOf("") }
     var pendingShareQrVersion by remember { mutableIntStateOf(0) }
     var showLyricsDialog by remember { mutableStateOf(false) }
+    var showLyricsSearchPage by remember { mutableStateOf(false) }
+    var lyricsSearchQuery by remember { mutableStateOf("") }
+    var lyricsSearchEntries by remember { mutableStateOf<List<LyricsSearchEntry>>(emptyList()) }
+    var lyricsSearchLoading by remember { mutableStateOf(false) }
+    var lyricsSearchError by remember { mutableStateOf("") }
     var lyricsPreviewSong by remember { mutableStateOf<Song?>(null) }
     var lyricsPreviewText by remember { mutableStateOf("") }
     var lyricsLoading by remember { mutableStateOf(false) }
 
     var folderUri by remember {
         mutableStateOf(prefs.getString("catalog_folder", null))
+    }
+
+    // Reload both catalogs whenever Lyrics Search is opened.
+    LaunchedEffect(showLyricsSearchPage, folderUri) {
+        if (showLyricsSearchPage) {
+            lyricsSearchLoading = true
+            lyricsSearchError = ""
+            lyricsSearchQuery = ""
+            try {
+                val loadedEntries = withContext(Dispatchers.IO) {
+                    val latestSongs = loadSongs(context, folderUri)
+                    val lyricsByCode = readLyricsSearchMap(context, folderUri)
+                    sortSongsAlphabetically(latestSongs).map { song ->
+                        LyricsSearchEntry(
+                            song = song,
+                            lyrics = lyricsByCode[normalizeSongCode(song.code)].orEmpty()
+                        )
+                    }
+                }
+                lyricsSearchEntries = loadedEntries
+                if (loadedEntries.isEmpty()) {
+                    lyricsSearchError = "Walang mabasang songs catalog."
+                }
+            } catch (e: Exception) {
+                lyricsSearchError = e.message ?: "Hindi ma-load ang song catalogs."
+                lyricsSearchEntries = emptyList()
+            } finally {
+                lyricsSearchLoading = false
+            }
+        }
     }
 
     // Keep disk/JSON work off the main thread so the app opens quickly.
@@ -1241,9 +1360,10 @@ fun SongHubApp() {
         )
     }
 
-    BackHandler(enabled = showLyricsDialog || showShareCodeDialog || showScoresPage || showCreatorPage) {
+    BackHandler(enabled = showLyricsDialog || showLyricsSearchPage || showShareCodeDialog || showScoresPage || showCreatorPage) {
         when {
             showLyricsDialog -> showLyricsDialog = false
+            showLyricsSearchPage -> showLyricsSearchPage = false
             showShareCodeDialog -> showShareCodeDialog = false
             showCreatorPage -> showCreatorPage = false
             showScoresPage -> showScoresPage = false
@@ -2150,6 +2270,19 @@ fun SongHubApp() {
                 }
             }
         }
+    } else if (showLyricsSearchPage) {
+        LyricsSearchPage(
+            entries = lyricsSearchEntries,
+            query = lyricsSearchQuery,
+            onQueryChange = { lyricsSearchQuery = it },
+            loading = lyricsSearchLoading,
+            error = lyricsSearchError,
+            onBack = { showLyricsSearchPage = false },
+            onSelectSong = { song ->
+                showLyricsSearchPage = false
+                selectedSong = song
+            }
+        )
     } else if (showCreatorPage) {
         CreatorPage(onBack = { showCreatorPage = false })
     } else if (!showScoresPage) {
@@ -2425,6 +2558,25 @@ fun SongHubApp() {
             }
 
             Spacer(Modifier.height(11.dp))
+
+            // SEARCH SONG BY LYRICS
+
+            OutlinedButton(
+                onClick = { showLyricsSearchPage = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Accent),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Accent)
+            ) {
+                Text(
+                    "SEARCH SONG BY LYRICS",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.sp
+                )
+            }
+
+            Spacer(Modifier.height(6.dp))
 
             // SEARCH
 
@@ -3363,6 +3515,166 @@ fun SongHubApp() {
                 }
             }
         )
+    }
+}
+
+
+@Composable
+fun LyricsSearchPage(
+    entries: List<LyricsSearchEntry>,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    loading: Boolean,
+    error: String,
+    onBack: () -> Unit,
+    onSelectSong: (Song) -> Unit
+) {
+    var filteredSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+
+    LaunchedEffect(entries, query) {
+        val term = query.trim()
+        filteredSongs = withContext(Dispatchers.Default) {
+            if (term.isBlank()) {
+                entries.map { it.song }
+            } else {
+                entries.asSequence()
+                    .filter { entry ->
+                        entry.song.title.contains(term, ignoreCase = true) ||
+                            entry.song.artist.contains(term, ignoreCase = true) ||
+                            entry.song.code.contains(term, ignoreCase = true) ||
+                            entry.lyrics.contains(term, ignoreCase = true)
+                    }
+                    .map { it.song }
+                    .toList()
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF171B3D), Navy, Color(0xFF101D36))
+                )
+            )
+            .padding(horizontal = 14.dp)
+    ) {
+        Spacer(Modifier.height(10.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(
+                onClick = onBack,
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+            ) {
+                Text("‹ BACK", color = Accent, fontWeight = FontWeight.ExtraBold)
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "SONGHUB",
+                    color = Accent,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 4.sp
+                )
+                Text(
+                    "LYRICS SEARCH",
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.Black,
+                    color = TextWhite
+                )
+            }
+
+            Text(
+                "${entries.size} SONGS",
+                color = Color(0xFFFFC66D),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+        }
+
+        Spacer(Modifier.height(11.dp))
+
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = {
+                Text(
+                    "Type any lyrics, title, artist or song number...",
+                    fontSize = 13.sp,
+                    color = Muted
+                )
+            },
+            singleLine = false,
+            maxLines = 2,
+            shape = RoundedCornerShape(14.dp),
+            textStyle = LocalTextStyle.current.copy(
+                fontSize = 15.sp,
+                color = TextWhite
+            ),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextWhite,
+                unfocusedTextColor = TextWhite,
+                focusedBorderColor = Accent,
+                unfocusedBorderColor = Color(0xFF52618D),
+                cursorColor = Accent
+            )
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        when {
+            loading -> {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Loading song and lyrics catalogs...", color = Muted, fontSize = 14.sp)
+                }
+            }
+
+            error.isNotBlank() -> {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(error, color = Muted, fontSize = 14.sp)
+                }
+            }
+
+            filteredSongs.isEmpty() -> {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No songs found.", color = Muted, fontSize = 16.sp)
+                }
+            }
+
+            else -> {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(top = 2.dp, bottom = 10.dp)
+                ) {
+                    items(
+                        items = filteredSongs,
+                        key = { it.code },
+                        contentType = { "song" }
+                    ) { song ->
+                        SongCard(
+                            song = song,
+                            onClick = { onSelectSong(song) }
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
