@@ -1347,16 +1347,21 @@ fun SongHubApp() {
         mutableStateOf(prefs.getString("catalog_folder", null))
     }
 
-    // Reload both catalogs whenever Lyrics Search is opened.
-    LaunchedEffect(showLyricsSearchPage, folderUri) {
-        if (showLyricsSearchPage) {
+    // Keep disk/JSON work off the main thread so the app opens quickly.
+    var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
+
+    // Build the lyrics index only when the Lyrics Search page is open.
+    // Reuse the already-loaded song list; do NOT parse songs_catalog.json again.
+    // This avoids holding a second large JSONObject tree in the 128 MB app heap.
+    LaunchedEffect(showLyricsSearchPage, folderUri, songs) {
+        if (showLyricsSearchPage && songs.isNotEmpty()) {
             lyricsSearchLoading = true
             lyricsSearchProgress = 0
             lyricsSearchError = ""
             lyricsSearchQuery = ""
             try {
                 val loadedEntries = withContext(Dispatchers.IO) {
-                    val latestSongs = loadSongs(context, folderUri)
+                    val latestSongs = songs
                     val lyricsByCode = readLyricsSearchMap(context, folderUri) { count ->
                         lyricsSearchProgress = count
                     }
@@ -1379,9 +1384,6 @@ fun SongHubApp() {
             }
         }
     }
-
-    // Keep disk/JSON work off the main thread so the app opens quickly.
-    var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var filteredSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
 
     var showAlphabet by remember { mutableStateOf(false) }
@@ -4375,6 +4377,13 @@ private fun ScoreSortButton(
 // CREATOR PAGE — animated neon smoke background
 @Composable
 fun CreatorPage(onBack: () -> Unit) {
+    val creatorContext = LocalContext.current
+    val creatorAvatarBitmap = remember(creatorContext) {
+        runCatching {
+            BitmapFactory.decodeResource(creatorContext.resources, R.drawable.creator_avatar)
+                ?.asImageBitmap()
+        }.getOrNull()
+    }
     var showQrDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -4413,14 +4422,31 @@ fun CreatorPage(onBack: () -> Unit) {
                     .background(Color(0xFF10152B), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Image(
-                    painter = painterResource(R.drawable.creator_avatar),
-                    contentDescription = "Creator profile picture",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(140.dp)
-                        .clip(CircleShape)
-                )
+                if (creatorAvatarBitmap != null) {
+                    Image(
+                        bitmap = creatorAvatarBitmap,
+                        contentDescription = "Creator profile picture",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(140.dp)
+                            .clip(CircleShape)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(140.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF20294A)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "CA",
+                            color = Color.White,
+                            fontSize = 36.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(18.dp))
