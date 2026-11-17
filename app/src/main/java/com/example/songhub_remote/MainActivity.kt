@@ -88,35 +88,56 @@ private fun cleanLyricsText(raw: String): String {
         .trim()
 }
 
+private fun normalizeLyricsMatch(value: String): String {
+    return value.lowercase(Locale.ROOT)
+        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+        .trim()
+        .replace(Regex("\\s+"), " ")
+}
+
 private fun readLyricsForSong(
     context: android.content.Context,
     folderUri: String?,
-    songCode: String
+    song: Song
 ): String {
+    val wantedTitle = normalizeLyricsMatch(song.title)
+    val wantedArtist = normalizeLyricsMatch(song.artist)
+
     fun scan(input: java.io.InputStream): String {
         JsonReader(input.bufferedReader()).use { reader ->
             reader.isLenient = true
             reader.beginArray()
             while (reader.hasNext()) {
-                var code = ""
+                var title = ""
+                var artist = ""
                 var lyrics = ""
                 reader.beginObject()
                 while (reader.hasNext()) {
                     when (reader.nextName()) {
-                        "code" -> code = reader.nextString()
-                        "lyrics" -> {
-                            lyrics = if (reader.peek() == JsonToken.NULL) {
-                                reader.nextNull()
-                                ""
-                            } else reader.nextString()
-                        }
+                        "title" -> title = if (reader.peek() == JsonToken.NULL) {
+                            reader.nextNull()
+                            ""
+                        } else reader.nextString()
+                        "artist" -> artist = if (reader.peek() == JsonToken.NULL) {
+                            reader.nextNull()
+                            ""
+                        } else reader.nextString()
+                        "lyrics" -> lyrics = if (reader.peek() == JsonToken.NULL) {
+                            reader.nextNull()
+                            ""
+                        } else reader.nextString()
                         else -> reader.skipValue()
                     }
                 }
                 reader.endObject()
-                if (code.trim().toLongOrNull()?.toString() == songCode.trim().toLongOrNull()?.toString()
-                    || code.trim() == songCode.trim()
-                ) {
+
+                val titleMatches = normalizeLyricsMatch(title) == wantedTitle
+                val artistMatches = if (wantedArtist.isBlank()) {
+                    normalizeLyricsMatch(artist).isBlank()
+                } else {
+                    normalizeLyricsMatch(artist) == wantedArtist
+                }
+                if (titleMatches && artistMatches && lyrics.isNotBlank()) {
                     return cleanLyricsText(lyrics)
                 }
             }
@@ -125,7 +146,7 @@ private fun readLyricsForSong(
         return ""
     }
 
-    // Bundled catalog inside the APK: no phone file transfer or first-run download needed.
+    // Match by title and artist, not the old MIDI code. The MIDI files were renumbered.
     val assetNames = listOf("songs_catalog_with_lyrics.json", "lyrics_catalog.json")
     for (name in assetNames) {
         try {
@@ -138,8 +159,8 @@ private fun readLyricsForSong(
     if (!folderUri.isNullOrBlank()) {
         try {
             val folder = getCatalogDirectory(context, Uri.parse(folderUri))
-            val file = folder.findFile("lyrics_catalog.json")
-                ?: folder.findFile("songs_catalog_with_lyrics.json")
+            val file = folder.findFile("songs_catalog_with_lyrics.json")
+                ?: folder.findFile("lyrics_catalog.json")
             if (file != null && file.exists()) {
                 val found = context.contentResolver.openInputStream(file.uri)?.use { scan(it) }.orEmpty()
                 if (found.isNotBlank()) return found
@@ -3301,7 +3322,7 @@ fun SongHubApp() {
                             showLyricsDialog = true
                             scope.launch {
                                 lyricsPreviewText = withContext(Dispatchers.IO) {
-                                    readLyricsForSong(context, folderUri, song.code)
+                                    readLyricsForSong(context, folderUri, song)
                                 }
                                 lyricsLoading = false
                             }
