@@ -1146,9 +1146,7 @@ fun SongHubApp() {
     var checkingShareQr by remember { mutableStateOf(false) }
     var updatingShareQr by remember { mutableStateOf(false) }
     var shareQrMessage by remember { mutableStateOf("") }
-    var pendingShareQrVersion by remember {
-        mutableIntStateOf(prefs.getInt(PREF_APPLIED_SHARE_QR_VERSION, 0))
-    }
+    var pendingShareQrVersion by remember { mutableIntStateOf(0) }
     var showLyricsDialog by remember { mutableStateOf(false) }
     var lyricsPreviewSong by remember { mutableStateOf<Song?>(null) }
     var lyricsPreviewText by remember { mutableStateOf("") }
