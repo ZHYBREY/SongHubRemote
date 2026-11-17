@@ -124,6 +124,16 @@ private fun readLyricsForSong(
         return ""
     }
 
+    // Bundled catalog inside the APK: no phone file transfer or first-run download needed.
+    val assetNames = listOf("songs_catalog_with_lyrics.json", "lyrics_catalog.json")
+    for (name in assetNames) {
+        try {
+            val found = context.assets.open(name).use { scan(it) }
+            if (found.isNotBlank()) return found
+        } catch (_: Exception) {
+        }
+    }
+
     if (!folderUri.isNullOrBlank()) {
         try {
             val folder = getCatalogDirectory(context, Uri.parse(folderUri))
@@ -147,14 +157,6 @@ private fun readLyricsForSong(
         }
     }
 
-    val assetNames = listOf("lyrics_catalog.json", "songs_catalog_with_lyrics.json")
-    for (name in assetNames) {
-        try {
-            val found = context.assets.open(name).use { scan(it) }
-            if (found.isNotBlank()) return found
-        } catch (_: Exception) {
-        }
-    }
     return ""
 }
 
@@ -682,6 +684,13 @@ private fun updateOnlineCatalog(
 // DOWNLOAD OR REFRESH THE FULL LYRICS CATALOG FROM THE LATEST CATALOG RELEASE
 
 private fun updateLyricsCatalog(context: android.content.Context) {
+    // If the full catalog is bundled in app/src/main/assets, use it and skip network download.
+    try {
+        context.assets.open("songs_catalog_with_lyrics.json").use { return }
+    } catch (_: Exception) {
+        // No bundled catalog; keep the existing automatic download fallback.
+    }
+
     val prefs = context.getSharedPreferences("songhub_prefs", android.content.Context.MODE_PRIVATE)
     val target = File(context.filesDir, "songs_catalog_with_lyrics.json")
     val temp = File(context.filesDir, "songs_catalog_with_lyrics.json.tmp")
