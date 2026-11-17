@@ -325,6 +325,25 @@ private fun fetchShareQrInfo(): ShareQrInfo {
         if (version <= 0 || !imageUrl.startsWith("https://")) {
             throw Exception("Invalid share_qr.json. Check version and imageUrl.")
         }
+
+        // Do not announce a QR update until its image is actually available.
+        val imageCheck = Request.Builder()
+            .url("${imageUrl}${if (imageUrl.contains("?")) "&" else "?"}t=${System.currentTimeMillis()}")
+            .head()
+            .header("Cache-Control", "no-cache, no-store")
+            .header("User-Agent", "SongHub-Remote")
+            .build()
+
+        appUpdateHttpClient.newCall(imageCheck).execute().use { imageResponse ->
+            if (!imageResponse.isSuccessful) {
+                throw Exception("Share QR image is not available yet (HTTP ${imageResponse.code}).")
+            }
+            val contentType = imageResponse.header("Content-Type").orEmpty()
+            if (contentType.isNotBlank() && !contentType.startsWith("image/")) {
+                throw Exception("Share QR URL did not return an image.")
+            }
+        }
+
         return ShareQrInfo(version, imageUrl)
     }
 }
@@ -997,8 +1016,7 @@ private fun ensureCatalogFile(
         .use { it.readText() }
 
     val file = folder.createFile(
-        "application/json",
-        "songs_catalog.json"
+        "application/json",        "songs_catalog.json"
     ) ?: throw Exception("Hindi makagawa ng catalog file.")
 
     context.contentResolver.openOutputStream(file.uri, "wt")
@@ -1997,8 +2015,7 @@ fun SongHubApp() {
 
     if (showLyricsDialog) {
         val lyricsTransition = rememberInfiniteTransition(label = "lyrics-neon")
-        val lyricsGlow by lyricsTransition.animateFloat(
-            initialValue = 0f,
+        val lyricsGlow by lyricsTransition.animateFloat(            initialValue = 0f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
                 animation = tween(durationMillis = 5200, easing = LinearEasing)
@@ -2997,8 +3014,7 @@ fun SongHubApp() {
 
                         Text(
                             appUpdateInfo!!.releaseNotes,
-                            color = Muted,
-                            fontSize = 12.sp
+                            color = Muted,                            fontSize = 12.sp
                         )
 
                         Button(
