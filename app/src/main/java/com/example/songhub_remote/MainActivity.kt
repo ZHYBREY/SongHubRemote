@@ -3835,29 +3835,14 @@ fun CreatorPage(onBack: () -> Unit) {
                     .background(Color(0xFF10152B), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Box(
+                Image(
+                    painter = painterResource(R.drawable.creator_avatar),
+                    contentDescription = "Creator profile picture",
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(140.dp)
                         .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    Color(0xFFFF42C6),
-                                    Color(0xFF8B5CFF),
-                                    Color(0xFF00E5FF)
-                                )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "CA",
-                        color = Color.White,
-                        fontSize = 48.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 2.sp
-                    )
-                }
+                )
             }
 
             Spacer(Modifier.height(18.dp))
@@ -3993,21 +3978,16 @@ fun CreatorPage(onBack: () -> Unit) {
                         fontSize = 12.sp
                     )
                     Spacer(Modifier.height(12.dp))
-                    Box(
+                    Image(
+                        painter = painterResource(R.drawable.gcash_qr),
+                        contentDescription = "GCash QR code",
+                        contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .height(360.dp)
                             .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xFF202B4A))
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "GCash QR image is not uploaded yet.",
-                            color = Color(0xFFD8E2FF),
-                            fontSize = 12.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
+                            .background(Color.White)
+                    )
                     Spacer(Modifier.height(12.dp))
                     Text(
                         "Thank you for supporting SongHub Remote!",
