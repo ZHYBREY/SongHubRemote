@@ -103,11 +103,43 @@ private fun readLyricsSearchMap(
     onProgress: (Int) -> Unit
 ): Map<String, String> {
     val mainHandler = Handler(Looper.getMainLooper())
+    val cacheFile = File(context.filesDir, "lyrics_search_index_v1.bin")
+    val cacheTemp = File(context.filesDir, "lyrics_search_index_v1.tmp")
 
-    fun scan(input: java.io.InputStream): Map<String, String> {
-        val result = mutableMapOf<String, String>()
+    fun readCachedIndex(sourceKey: String): Map<String, String>? {
+        if (!cacheFile.exists()) return null
+        return try {
+            java.io.DataInputStream(cacheFile.inputStream().buffered()).use { input ->
+                if (input.readUTF() != sourceKey) return null
+                val count = input.readInt()
+                if (count < 0 || count > 500_000) return null
+                val result = HashMap<String, String>(count)
+                repeat(count) {
+                    val codeLength = input.readInt()
+                    if (codeLength < 0 || codeLength > 1_000_000) throw Exception("Invalid index")
+                    val codeBytes = ByteArray(codeLength)
+                    input.readFully(codeBytes)
+                    val lyricsLength = input.readInt()
+                    if (lyricsLength < 0 || lyricsLength > 16_000_000) throw Exception("Invalid index")
+                    val lyricsBytes = ByteArray(lyricsLength)
+                    input.readFully(lyricsBytes)
+                    result[String(codeBytes, Charsets.UTF_8)] = String(lyricsBytes, Charsets.UTF_8)
+                }
+                mainHandler.post { onProgress(count) }
+                result
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun scanAndCache(
+        inputStream: java.io.InputStream,
+        sourceKey: String
+    ): Map<String, String> {
+        val result = HashMap<String, String>()
         var scannedEntries = 0
-        JsonReader(input.bufferedReader()).use { reader ->
+        JsonReader(inputStream.bufferedReader()).use { reader ->
             reader.isLenient = true
             reader.beginArray()
             while (reader.hasNext()) {
@@ -133,27 +165,56 @@ private fun readLyricsSearchMap(
                 }
                 reader.endObject()
                 scannedEntries++
-                if (scannedEntries % 200 == 0) {
+                if (scannedEntries % 500 == 0) {
                     val count = scannedEntries
                     mainHandler.post { onProgress(count) }
                 }
                 if (code.isNotBlank() && lyrics.isNotBlank()) {
-                    // Search normalization removes punctuation and folds whitespace,
-                    // so a second full clean-up pass is unnecessary here.
                     result[normalizeSongCode(code)] = normalizeLyricsSearchText(lyrics)
                 }
             }
             reader.endArray()
-            mainHandler.post { onProgress(scannedEntries) }
         }
+
+        try {
+            cacheTemp.delete()
+            java.io.DataOutputStream(cacheTemp.outputStream().buffered()).use { output ->
+                output.writeUTF(sourceKey)
+                output.writeInt(result.size)
+                result.forEach { (code, lyrics) ->
+                    val codeBytes = code.toByteArray(Charsets.UTF_8)
+                    val lyricsBytes = lyrics.toByteArray(Charsets.UTF_8)
+                    output.writeInt(codeBytes.size)
+                    output.write(codeBytes)
+                    output.writeInt(lyricsBytes.size)
+                    output.write(lyricsBytes)
+                }
+                output.flush()
+            }
+            if (cacheFile.exists()) cacheFile.delete()
+            if (!cacheTemp.renameTo(cacheFile)) {
+                cacheTemp.copyTo(cacheFile, overwrite = true)
+                cacheTemp.delete()
+            }
+        } catch (_: Exception) {
+            cacheTemp.delete()
+        }
+
+        mainHandler.post { onProgress(scannedEntries) }
         return result
     }
 
+    // Bundled assets are immutable for one installed APK. The install timestamp
+    // invalidates the index automatically when a newer APK replaces the assets.
     val assetNames = listOf("songs_catalog_with_lyrics.json", "lyrics_catalog.json")
     for (name in assetNames) {
         try {
-            val found = context.assets.open(name).use { scan(it) }
-            if (found.isNotEmpty()) return found
+            context.assets.open(name).use { }
+            val installTime = context.packageManager
+                .getPackageInfo(context.packageName, 0).lastUpdateTime
+            val sourceKey = "asset:$name:$installTime"
+            readCachedIndex(sourceKey)?.let { return it }
+            return scanAndCache(context.assets.open(name), sourceKey)
         } catch (_: Exception) {
         }
     }
@@ -164,9 +225,10 @@ private fun readLyricsSearchMap(
             val file = folder.findFile("lyrics_catalog.json")
                 ?: folder.findFile("songs_catalog_with_lyrics.json")
             if (file != null && file.exists()) {
-                val found = context.contentResolver.openInputStream(file.uri)
-                    ?.use { scan(it) }.orEmpty()
-                if (found.isNotEmpty()) return found
+                val sourceKey = "saf:\${file.uri}:\${file.length()}:\${file.lastModified()}"
+                readCachedIndex(sourceKey)?.let { return it }
+                val stream = context.contentResolver.openInputStream(file.uri)
+                if (stream != null) return scanAndCache(stream, sourceKey)
             }
         } catch (_: Exception) {
         }
@@ -174,15 +236,15 @@ private fun readLyricsSearchMap(
 
     val downloaded = File(context.filesDir, "songs_catalog_with_lyrics.json")
     if (downloaded.exists()) {
+        val sourceKey = "file:\${downloaded.length()}:\${downloaded.lastModified()}"
+        readCachedIndex(sourceKey)?.let { return it }
         try {
-            val found = downloaded.inputStream().use { scan(it) }
-            if (found.isNotEmpty()) return found
+            return scanAndCache(downloaded.inputStream(), sourceKey)
         } catch (_: Exception) {
         }
     }
     return emptyMap()
 }
-
 private fun cleanLyricsText(raw: String): String {
     return raw
         .replace(Regex("[/\\\\]+"), " ")
