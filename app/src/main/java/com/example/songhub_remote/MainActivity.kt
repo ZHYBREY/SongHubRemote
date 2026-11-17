@@ -1,6 +1,8 @@
 package com.example.songhub_remote
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.JsonReader
 import android.util.JsonToken
 import android.graphics.Bitmap
@@ -97,10 +99,14 @@ private fun normalizeLyricsSearchText(raw: String): String {
 
 private fun readLyricsSearchMap(
     context: android.content.Context,
-    folderUri: String?
+    folderUri: String?,
+    onProgress: (Int) -> Unit
 ): Map<String, String> {
+    val mainHandler = Handler(Looper.getMainLooper())
+
     fun scan(input: java.io.InputStream): Map<String, String> {
         val result = mutableMapOf<String, String>()
+        var scannedEntries = 0
         JsonReader(input.bufferedReader()).use { reader ->
             reader.isLenient = true
             reader.beginArray()
@@ -126,11 +132,19 @@ private fun readLyricsSearchMap(
                     }
                 }
                 reader.endObject()
+                scannedEntries++
+                if (scannedEntries % 200 == 0) {
+                    val count = scannedEntries
+                    mainHandler.post { onProgress(count) }
+                }
                 if (code.isNotBlank() && lyrics.isNotBlank()) {
-                    result[normalizeSongCode(code)] = normalizeLyricsSearchText(cleanLyricsText(lyrics))
+                    // Search normalization removes punctuation and folds whitespace,
+                    // so a second full clean-up pass is unnecessary here.
+                    result[normalizeSongCode(code)] = normalizeLyricsSearchText(lyrics)
                 }
             }
             reader.endArray()
+            mainHandler.post { onProgress(scannedEntries) }
         }
         return result
     }
@@ -1261,6 +1275,7 @@ fun SongHubApp() {
     var lyricsSearchQuery by remember { mutableStateOf("") }
     var lyricsSearchEntries by remember { mutableStateOf<List<LyricsSearchEntry>>(emptyList()) }
     var lyricsSearchLoading by remember { mutableStateOf(false) }
+    var lyricsSearchProgress by remember { mutableIntStateOf(0) }
     var lyricsSearchError by remember { mutableStateOf("") }
     var lyricsPreviewSong by remember { mutableStateOf<Song?>(null) }
     var lyricsPreviewText by remember { mutableStateOf("") }
@@ -1274,12 +1289,15 @@ fun SongHubApp() {
     LaunchedEffect(showLyricsSearchPage, folderUri) {
         if (showLyricsSearchPage) {
             lyricsSearchLoading = true
+            lyricsSearchProgress = 0
             lyricsSearchError = ""
             lyricsSearchQuery = ""
             try {
                 val loadedEntries = withContext(Dispatchers.IO) {
                     val latestSongs = loadSongs(context, folderUri)
-                    val lyricsByCode = readLyricsSearchMap(context, folderUri)
+                    val lyricsByCode = readLyricsSearchMap(context, folderUri) { count ->
+                        lyricsSearchProgress = count
+                    }
                     sortSongsAlphabetically(latestSongs).map { song ->
                         LyricsSearchEntry(
                             song = song,
@@ -2283,6 +2301,7 @@ fun SongHubApp() {
             query = lyricsSearchQuery,
             onQueryChange = { lyricsSearchQuery = it },
             loading = lyricsSearchLoading,
+            progress = lyricsSearchProgress,
             error = lyricsSearchError,
             onBack = { showLyricsSearchPage = false },
             onSelectSong = { song ->
@@ -3532,6 +3551,7 @@ fun LyricsSearchPage(
     query: String,
     onQueryChange: (String) -> Unit,
     loading: Boolean,
+    progress: Int,
     error: String,
     onBack: () -> Unit,
     onSelectSong: (Song) -> Unit
@@ -3641,7 +3661,17 @@ fun LyricsSearchPage(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Loading song and lyrics catalogs...", color = Muted, fontSize = 14.sp)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = Accent)
+                        Spacer(Modifier.height(14.dp))
+                        Text("Reading lyrics database...", color = TextWhite, fontSize = 14.sp)
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            if (progress > 0) "$progress lyrics entries checked" else "Preparing song catalog...",
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+                    }
                 }
             }
 
