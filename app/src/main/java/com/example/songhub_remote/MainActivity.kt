@@ -225,7 +225,7 @@ private fun readLyricsSearchMap(
             val file = folder.findFile("lyrics_catalog.json")
                 ?: folder.findFile("songs_catalog_with_lyrics.json")
             if (file != null && file.exists()) {
-                val sourceKey = "saf:\${file.uri}:\${file.length()}:\${file.lastModified()}"
+                val sourceKey = "saf:${file.uri}:${file.length()}:${file.lastModified()}"
                 readCachedIndex(sourceKey)?.let { return it }
                 val stream = context.contentResolver.openInputStream(file.uri)
                 if (stream != null) return scanAndCache(stream, sourceKey)
@@ -236,7 +236,7 @@ private fun readLyricsSearchMap(
 
     val downloaded = File(context.filesDir, "songs_catalog_with_lyrics.json")
     if (downloaded.exists()) {
-        val sourceKey = "file:\${downloaded.length()}:\${downloaded.lastModified()}"
+        val sourceKey = "file:${downloaded.length()}:${downloaded.lastModified()}"
         readCachedIndex(sourceKey)?.let { return it }
         try {
             return scanAndCache(downloaded.inputStream(), sourceKey)
