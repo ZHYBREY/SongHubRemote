@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.util.JsonReader
 import android.util.JsonToken
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.content.Intent
 import android.os.Build
@@ -169,6 +170,11 @@ data class ScoreEntry(
     val playedAt: Long
 )
 
+data class ShareQrInfo(
+    val version: Int,
+    val imageUrl: String
+)
+
 data class AppUpdateInfo(
     val versionCode: Int,
     val versionName: String,
@@ -189,6 +195,11 @@ private const val APP_UPDATE_URL =
 
 private const val SHARE_CODE_URL =
     "https://github.com/ZHYBREY/SongHubRemote/releases/latest/download/app-debug.apk"
+
+private const val SHARE_QR_MANIFEST_URL =
+    "https://raw.githubusercontent.com/ZHYBREY/SongHub-Catalog/main/share_qr.json"
+
+private const val PREF_APPLIED_SHARE_QR_VERSION = "applied_share_qr_version"
 
 // UPDATE NOTIFICATION PREFERENCES
 
@@ -293,6 +304,44 @@ private fun createShareCodeQr(content: String, size: Int = 720): Bitmap {
         for (x in 0 until size) for (y in 0 until size) {
             setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
         }
+    }
+}
+
+// CHECK GITHUB SHARE QR MANIFEST AND DOWNLOAD IMAGE
+
+private fun fetchShareQrInfo(): ShareQrInfo {
+    val request = Request.Builder()
+        .url("$SHARE_QR_MANIFEST_URL?t=${System.currentTimeMillis()}")
+        .header("Cache-Control", "no-cache, no-store")
+        .header("Pragma", "no-cache")
+        .header("User-Agent", "SongHub-Remote")
+        .build()
+
+    appUpdateHttpClient.newCall(request).execute().use { response ->
+        if (!response.isSuccessful) throw Exception("GitHub QR manifest error: HTTP ${response.code}")
+        val json = JSONObject(response.body?.string() ?: throw Exception("Empty QR manifest"))
+        val version = json.optInt("version", 0)
+        val imageUrl = json.optString("imageUrl", "")
+        if (version <= 0 || !imageUrl.startsWith("https://")) {
+            throw Exception("Invalid share_qr.json. Check version and imageUrl.")
+        }
+        return ShareQrInfo(version, imageUrl)
+    }
+}
+
+private fun downloadShareQrImage(info: ShareQrInfo): Bitmap {
+    val request = Request.Builder()
+        .url("${info.imageUrl}${if (info.imageUrl.contains("?")) "&" else "?"}t=${System.currentTimeMillis()}")
+        .header("Cache-Control", "no-cache, no-store")
+        .header("User-Agent", "SongHub-Remote")
+        .build()
+
+    appUpdateHttpClient.newCall(request).execute().use { response ->
+        if (!response.isSuccessful) throw Exception("QR image download error: HTTP ${response.code}")
+        val bytes = response.body?.bytes() ?: throw Exception("Empty QR image")
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            ?: throw Exception("Invalid QR image. Use PNG or JPG.")
+        return bitmap
     }
 }
 
@@ -1085,6 +1134,21 @@ fun SongHubApp() {
     var showPcSettings by remember { mutableStateOf(false) }
     var showCatalogSettings by remember { mutableStateOf(false) }
     var showShareCodeDialog by remember { mutableStateOf(false) }
+    var shareQrBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(Unit) {
+        val savedQr = File(context.filesDir, "share_qr.png")
+        if (savedQr.exists()) {
+            shareQrBitmap = withContext(Dispatchers.IO) {
+                BitmapFactory.decodeFile(savedQr.absolutePath)
+            }
+        }
+    }
+    var checkingShareQr by remember { mutableStateOf(false) }
+    var updatingShareQr by remember { mutableStateOf(false) }
+    var shareQrMessage by remember { mutableStateOf("") }
+    var pendingShareQrVersion by remember {
+        mutableIntStateOf(prefs.getInt(PREF_APPLIED_SHARE_QR_VERSION, 0))
+    }
     var showLyricsDialog by remember { mutableStateOf(false) }
     var lyricsPreviewSong by remember { mutableStateOf<Song?>(null) }
     var lyricsPreviewText by remember { mutableStateOf("") }
@@ -1175,6 +1239,68 @@ fun SongHubApp() {
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .build()
+    }
+
+    // CHECK SHARE QR UPDATE ON APP START
+
+    LaunchedEffect(Unit) {
+        try {
+            val remoteQr = withContext(Dispatchers.IO) { fetchShareQrInfo() }
+            val appliedVersion = prefs.getInt(PREF_APPLIED_SHARE_QR_VERSION, 0)
+            if (remoteQr.version > appliedVersion) {
+                pendingShareQrVersion = remoteQr.version
+            } else {
+                pendingShareQrVersion = 0
+            }
+        } catch (_: Exception) {
+            // Keep the last known notification state if GitHub is unavailable.
+        }
+    }
+
+    fun refreshShareQr() {
+        scope.launch {
+            checkingShareQr = true
+            shareQrMessage = "Checking GitHub for a new QR..."
+            try {
+                val remoteQr = withContext(Dispatchers.IO) { fetchShareQrInfo() }
+                val appliedVersion = prefs.getInt(PREF_APPLIED_SHARE_QR_VERSION, 0)
+                if (remoteQr.version > appliedVersion) {
+                    pendingShareQrVersion = remoteQr.version
+                    shareQrMessage = "New QR available! Tap UPDATE QR."
+                } else {
+                    pendingShareQrVersion = 0
+                    shareQrMessage = "Your Share QR is up to date."
+                }
+            } catch (e: Exception) {
+                shareQrMessage = "QR check failed: ${e.message}"
+            } finally {
+                checkingShareQr = false
+            }
+        }
+    }
+
+    fun updateShareQr() {
+        scope.launch {
+            updatingShareQr = true
+            shareQrMessage = "Downloading new Share QR..."
+            try {
+                val remoteQr = withContext(Dispatchers.IO) { fetchShareQrInfo() }
+                val bitmap = withContext(Dispatchers.IO) { downloadShareQrImage(remoteQr) }
+                withContext(Dispatchers.IO) {
+                    File(context.filesDir, "share_qr.png").outputStream().use { output ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                    }
+                }
+                shareQrBitmap = bitmap
+                prefs.edit().putInt(PREF_APPLIED_SHARE_QR_VERSION, remoteQr.version).apply()
+                pendingShareQrVersion = 0
+                shareQrMessage = "Share QR updated successfully!"
+            } catch (e: Exception) {
+                shareQrMessage = "QR update failed: ${e.message}"
+            } finally {
+                updatingShareQr = false
+            }
+        }
     }
 
     // CHECK APP UPDATE
@@ -2127,7 +2253,7 @@ fun SongHubApp() {
                         fontSize = 27.sp
                     )
 
-                    if (pendingAppVersionCode > 0) {
+                    if (pendingAppVersionCode > 0 || pendingShareQrVersion > 0) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
@@ -2947,7 +3073,7 @@ fun SongHubApp() {
 
     // SHARE CODE QR DIALOG
     if (showShareCodeDialog) {
-        val qrBitmap = remember { createShareCodeQr(SHARE_CODE_URL).asImageBitmap() }
+        val qrBitmap = (shareQrBitmap ?: remember { createShareCodeQr(SHARE_CODE_URL) }).asImageBitmap()
         AlertDialog(
             onDismissRequest = { showShareCodeDialog = false },
             containerColor = Color(0xFF222E50),
@@ -2971,6 +3097,33 @@ fun SongHubApp() {
                             .background(Color.White, RoundedCornerShape(12.dp))
                             .padding(8.dp)
                     )
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { refreshShareQr() },
+                            enabled = !checkingShareQr && !updatingShareQr,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34466F))
+                        ) {
+                            Text(if (checkingShareQr) "CHECKING..." else "↻ REFRESH QR", fontSize = 11.sp)
+                        }
+                        if (pendingShareQrVersion > 0) {
+                            Button(
+                                onClick = { updateShareQr() },
+                                enabled = !updatingShareQr,
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Navy)
+                            ) {
+                                Text(if (updatingShareQr) "UPDATING..." else "UPDATE QR", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    }
+                    if (shareQrMessage.isNotBlank()) {
+                        Text(shareQrMessage, color = if (shareQrMessage.contains("successfully") || shareQrMessage.contains("up to date")) Accent else Muted, fontSize = 11.sp)
+                    }
                     Spacer(Modifier.height(12.dp))
                     Text(
                         "Scan this QR code to open the latest SongHub Remote release.",
