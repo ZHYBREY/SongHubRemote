@@ -3797,15 +3797,6 @@ private fun ScoreSortButton(
 // CREATOR PAGE — animated neon smoke background
 @Composable
 fun CreatorPage(onBack: () -> Unit) {
-    val transition = rememberInfiniteTransition(label = "creator-neon")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 4200, easing = LinearEasing)
-        ),
-        label = "neon-drift"
-    )
     var showQrDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -3816,45 +3807,6 @@ fun CreatorPage(onBack: () -> Unit) {
                 )
             )
         )
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-            val wave = phase * 6.2831855f
-            val pinkCenter = Offset(w * (0.22f + 0.19f * kotlin.math.sin(wave)), h * (0.20f + 0.10f * kotlin.math.cos(wave)))
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color(0xCCFF36C9), Color(0x665E35FF), Color.Transparent),
-                    center = pinkCenter,
-                    radius = w * 0.72f
-                ),
-                radius = w * 0.72f,
-                center = pinkCenter
-            )
-            val blueCenter = Offset(w * (0.78f + 0.17f * kotlin.math.cos(wave + 1.2f)), h * (0.72f + 0.12f * kotlin.math.sin(wave + 1.2f)))
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color(0xAA00E5FF), Color(0x554A5BFF), Color.Transparent),
-                    center = blueCenter,
-                    radius = w * 0.78f
-                ),
-                radius = w * 0.78f,
-                center = blueCenter
-            )
-            val greenCenter = Offset(
-                w * (0.48f + 0.16f * kotlin.math.sin(wave + 2.1f)),
-                h * (0.48f + 0.13f * kotlin.math.cos(wave + 2.1f))
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color(0x887CFF6B), Color.Transparent),
-                    center = greenCenter,
-                    radius = w * 0.42f
-                ),
-                radius = w * 0.42f,
-                center = greenCenter
-            )
-        }
-
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally
