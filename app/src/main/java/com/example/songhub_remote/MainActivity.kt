@@ -88,6 +88,13 @@ private fun normalizeSongCode(code: String): String {
     return trimmed.toLongOrNull()?.toString() ?: trimmed.lowercase(Locale.ROOT)
 }
 
+private fun normalizeLyricsSearchText(raw: String): String {
+    return raw.lowercase(Locale.ROOT)
+        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+        .trim()
+        .replace(Regex("\\s+"), " ")
+}
+
 private fun readLyricsSearchMap(
     context: android.content.Context,
     folderUri: String?
@@ -120,7 +127,7 @@ private fun readLyricsSearchMap(
                 }
                 reader.endObject()
                 if (code.isNotBlank() && lyrics.isNotBlank()) {
-                    result[normalizeSongCode(code)] = cleanLyricsText(lyrics)
+                    result[normalizeSongCode(code)] = normalizeLyricsSearchText(cleanLyricsText(lyrics))
                 }
             }
             reader.endArray()
@@ -3532,17 +3539,17 @@ fun LyricsSearchPage(
     var filteredSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
 
     LaunchedEffect(entries, query) {
-        val term = query.trim()
+        val term = normalizeLyricsSearchText(query)
         filteredSongs = withContext(Dispatchers.Default) {
             if (term.isBlank()) {
                 entries.map { it.song }
             } else {
                 entries.asSequence()
                     .filter { entry ->
-                        entry.song.title.contains(term, ignoreCase = true) ||
-                            entry.song.artist.contains(term, ignoreCase = true) ||
+                        normalizeLyricsSearchText(entry.song.title).contains(term) ||
+                            normalizeLyricsSearchText(entry.song.artist).contains(term) ||
                             entry.song.code.contains(term, ignoreCase = true) ||
-                            entry.lyrics.contains(term, ignoreCase = true)
+                            entry.lyrics.contains(term)
                     }
                     .map { it.song }
                     .toList()
