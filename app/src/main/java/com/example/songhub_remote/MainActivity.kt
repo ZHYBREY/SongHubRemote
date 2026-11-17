@@ -1,8 +1,6 @@
 package com.example.songhub_remote
 
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.JsonReader
 import android.util.JsonToken
 import android.graphics.Bitmap
@@ -80,171 +78,6 @@ data class Song(
     val artist: String
 )
 
-data class LyricsSearchEntry(
-    val song: Song,
-    val lyrics: String
-)
-
-private fun normalizeSongCode(code: String): String {
-    val trimmed = code.trim()
-    return trimmed.toLongOrNull()?.toString() ?: trimmed.lowercase(Locale.ROOT)
-}
-
-private fun normalizeLyricsSearchText(raw: String): String {
-    return raw.lowercase(Locale.ROOT)
-        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
-        .trim()
-        .replace(Regex("\\s+"), " ")
-}
-
-private fun readLyricsSearchMap(
-    context: android.content.Context,
-    folderUri: String?,
-    onProgress: (Int) -> Unit
-): Map<String, String> {
-    val mainHandler = Handler(Looper.getMainLooper())
-    val cacheFile = File(context.filesDir, "lyrics_search_index_v1.bin")
-    val cacheTemp = File(context.filesDir, "lyrics_search_index_v1.tmp")
-
-    fun readCachedIndex(sourceKey: String): Map<String, String>? {
-        if (!cacheFile.exists()) return null
-        return try {
-            java.io.DataInputStream(cacheFile.inputStream().buffered()).use { input ->
-                if (input.readUTF() != sourceKey) return null
-                val count = input.readInt()
-                if (count < 0 || count > 500_000) return null
-                val result = HashMap<String, String>(count)
-                repeat(count) {
-                    val codeLength = input.readInt()
-                    if (codeLength < 0 || codeLength > 1_000_000) throw Exception("Invalid index")
-                    val codeBytes = ByteArray(codeLength)
-                    input.readFully(codeBytes)
-                    val lyricsLength = input.readInt()
-                    if (lyricsLength < 0 || lyricsLength > 16_000_000) throw Exception("Invalid index")
-                    val lyricsBytes = ByteArray(lyricsLength)
-                    input.readFully(lyricsBytes)
-                    result[String(codeBytes, Charsets.UTF_8)] = String(lyricsBytes, Charsets.UTF_8)
-                }
-                mainHandler.post { onProgress(count) }
-                result
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    fun scanAndCache(
-        inputStream: java.io.InputStream,
-        sourceKey: String
-    ): Map<String, String> {
-        val result = HashMap<String, String>()
-        var scannedEntries = 0
-        JsonReader(inputStream.bufferedReader()).use { reader ->
-            reader.isLenient = true
-            reader.beginArray()
-            while (reader.hasNext()) {
-                var code = ""
-                var lyrics = ""
-                reader.beginObject()
-                while (reader.hasNext()) {
-                    when (reader.nextName()) {
-                        "code" -> {
-                            code = if (reader.peek() == JsonToken.NULL) {
-                                reader.nextNull()
-                                ""
-                            } else reader.nextString()
-                        }
-                        "lyrics" -> {
-                            lyrics = if (reader.peek() == JsonToken.NULL) {
-                                reader.nextNull()
-                                ""
-                            } else reader.nextString()
-                        }
-                        else -> reader.skipValue()
-                    }
-                }
-                reader.endObject()
-                scannedEntries++
-                if (scannedEntries % 500 == 0) {
-                    val count = scannedEntries
-                    mainHandler.post { onProgress(count) }
-                }
-                if (code.isNotBlank() && lyrics.isNotBlank()) {
-                    result[normalizeSongCode(code)] = normalizeLyricsSearchText(lyrics)
-                }
-            }
-            reader.endArray()
-        }
-
-        try {
-            cacheTemp.delete()
-            java.io.DataOutputStream(cacheTemp.outputStream().buffered()).use { output ->
-                output.writeUTF(sourceKey)
-                output.writeInt(result.size)
-                result.forEach { (code, lyrics) ->
-                    val codeBytes = code.toByteArray(Charsets.UTF_8)
-                    val lyricsBytes = lyrics.toByteArray(Charsets.UTF_8)
-                    output.writeInt(codeBytes.size)
-                    output.write(codeBytes)
-                    output.writeInt(lyricsBytes.size)
-                    output.write(lyricsBytes)
-                }
-                output.flush()
-            }
-            if (cacheFile.exists()) cacheFile.delete()
-            if (!cacheTemp.renameTo(cacheFile)) {
-                cacheTemp.copyTo(cacheFile, overwrite = true)
-                cacheTemp.delete()
-            }
-        } catch (_: Exception) {
-            cacheTemp.delete()
-        }
-
-        mainHandler.post { onProgress(scannedEntries) }
-        return result
-    }
-
-    // Bundled assets are immutable for one installed APK. The install timestamp
-    // invalidates the index automatically when a newer APK replaces the assets.
-    val assetNames = listOf("songs_catalog_with_lyrics.json", "lyrics_catalog.json")
-    for (name in assetNames) {
-        try {
-            context.assets.open(name).use { }
-            val installTime = context.packageManager
-                .getPackageInfo(context.packageName, 0).lastUpdateTime
-            val sourceKey = "asset:$name:$installTime"
-            readCachedIndex(sourceKey)?.let { return it }
-            return scanAndCache(context.assets.open(name), sourceKey)
-        } catch (_: Exception) {
-        }
-    }
-
-    if (!folderUri.isNullOrBlank()) {
-        try {
-            val folder = getCatalogDirectory(context, Uri.parse(folderUri))
-            val file = folder.findFile("lyrics_catalog.json")
-                ?: folder.findFile("songs_catalog_with_lyrics.json")
-            if (file != null && file.exists()) {
-                val sourceKey = "saf:${file.uri}:${file.length()}:${file.lastModified()}"
-                readCachedIndex(sourceKey)?.let { return it }
-                val stream = context.contentResolver.openInputStream(file.uri)
-                if (stream != null) return scanAndCache(stream, sourceKey)
-            }
-        } catch (_: Exception) {
-        }
-    }
-
-    val downloaded = File(context.filesDir, "songs_catalog_with_lyrics.json")
-    if (downloaded.exists()) {
-        val sourceKey = "file:${downloaded.length()}:${downloaded.lastModified()}"
-        readCachedIndex(sourceKey)?.let { return it }
-        try {
-            return scanAndCache(downloaded.inputStream(), sourceKey)
-        } catch (_: Exception) {
-        }
-    }
-    return emptyMap()
-}
 private fun cleanLyricsText(raw: String): String {
     return raw
         .replace(Regex("[/\\\\]+"), " ")
@@ -1333,12 +1166,6 @@ fun SongHubApp() {
     var shareQrMessage by remember { mutableStateOf("") }
     var pendingShareQrVersion by remember { mutableIntStateOf(0) }
     var showLyricsDialog by remember { mutableStateOf(false) }
-    var showLyricsSearchPage by remember { mutableStateOf(false) }
-    var lyricsSearchQuery by remember { mutableStateOf("") }
-    var lyricsSearchEntries by remember { mutableStateOf<List<LyricsSearchEntry>>(emptyList()) }
-    var lyricsSearchLoading by remember { mutableStateOf(false) }
-    var lyricsSearchProgress by remember { mutableIntStateOf(0) }
-    var lyricsSearchError by remember { mutableStateOf("") }
     var lyricsPreviewSong by remember { mutableStateOf<Song?>(null) }
     var lyricsPreviewText by remember { mutableStateOf("") }
     var lyricsLoading by remember { mutableStateOf(false) }
@@ -1349,41 +1176,6 @@ fun SongHubApp() {
 
     // Keep disk/JSON work off the main thread so the app opens quickly.
     var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
-
-    // Build the lyrics index only when the Lyrics Search page is open.
-    // Reuse the already-loaded song list; do NOT parse songs_catalog.json again.
-    // This avoids holding a second large JSONObject tree in the 128 MB app heap.
-    LaunchedEffect(showLyricsSearchPage, folderUri, songs) {
-        if (showLyricsSearchPage && songs.isNotEmpty()) {
-            lyricsSearchLoading = true
-            lyricsSearchProgress = 0
-            lyricsSearchError = ""
-            lyricsSearchQuery = ""
-            try {
-                val loadedEntries = withContext(Dispatchers.IO) {
-                    val latestSongs = songs
-                    val lyricsByCode = readLyricsSearchMap(context, folderUri) { count ->
-                        lyricsSearchProgress = count
-                    }
-                    sortSongsAlphabetically(latestSongs).map { song ->
-                        LyricsSearchEntry(
-                            song = song,
-                            lyrics = lyricsByCode[normalizeSongCode(song.code)].orEmpty()
-                        )
-                    }
-                }
-                lyricsSearchEntries = loadedEntries
-                if (loadedEntries.isEmpty()) {
-                    lyricsSearchError = "Walang mabasang songs catalog."
-                }
-            } catch (e: Exception) {
-                lyricsSearchError = e.message ?: "Hindi ma-load ang song catalogs."
-                lyricsSearchEntries = emptyList()
-            } finally {
-                lyricsSearchLoading = false
-            }
-        }
-    }
     var filteredSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
 
     var showAlphabet by remember { mutableStateOf(false) }
@@ -1449,10 +1241,9 @@ fun SongHubApp() {
         )
     }
 
-    BackHandler(enabled = showLyricsDialog || showLyricsSearchPage || showShareCodeDialog || showScoresPage || showCreatorPage) {
+    BackHandler(enabled = showLyricsDialog || showShareCodeDialog || showScoresPage || showCreatorPage) {
         when {
             showLyricsDialog -> showLyricsDialog = false
-            showLyricsSearchPage -> showLyricsSearchPage = false
             showShareCodeDialog -> showShareCodeDialog = false
             showCreatorPage -> showCreatorPage = false
             showScoresPage -> showScoresPage = false
@@ -1802,10 +1593,17 @@ fun SongHubApp() {
         } catch (_: Exception) {
         }
 
-        // Do not parse every local catalog again during startup.
-        // loadFastLocalSongs already provided the initial list. Re-reading the
-        // folder, downloaded copy, and bundled JSON together can exceed the
-        // app's 128 MB heap on devices with a large catalog.
+        // Refresh the selected SongHub folder and online catalog in the background.
+        // The song list remains visible while these sources are checked.
+        try {
+            val fullLocalSongs = withContext(Dispatchers.IO) {
+                loadSongs(context, folderUri)
+            }
+            if (fullLocalSongs.size > songs.size) {
+                songs = fullLocalSongs
+            }
+        } catch (_: Exception) {
+        }
 
         try {
             val updatedSongs = withContext(Dispatchers.IO) {
@@ -2352,20 +2150,6 @@ fun SongHubApp() {
                 }
             }
         }
-    } else if (showLyricsSearchPage) {
-        LyricsSearchPage(
-            entries = lyricsSearchEntries,
-            query = lyricsSearchQuery,
-            onQueryChange = { lyricsSearchQuery = it },
-            loading = lyricsSearchLoading,
-            progress = lyricsSearchProgress,
-            error = lyricsSearchError,
-            onBack = { showLyricsSearchPage = false },
-            onSelectSong = { song ->
-                showLyricsSearchPage = false
-                selectedSong = song
-            }
-        )
     } else if (showCreatorPage) {
         CreatorPage(onBack = { showCreatorPage = false })
     } else if (!showScoresPage) {
@@ -2641,25 +2425,6 @@ fun SongHubApp() {
             }
 
             Spacer(Modifier.height(11.dp))
-
-            // SEARCH SONG BY LYRICS
-
-            OutlinedButton(
-                onClick = { showLyricsSearchPage = true },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Accent),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Accent)
-            ) {
-                Text(
-                    "SEARCH SONG BY LYRICS",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 1.sp
-                )
-            }
-
-            Spacer(Modifier.height(6.dp))
 
             // SEARCH
 
@@ -3601,177 +3366,6 @@ fun SongHubApp() {
     }
 }
 
-
-@Composable
-fun LyricsSearchPage(
-    entries: List<LyricsSearchEntry>,
-    query: String,
-    onQueryChange: (String) -> Unit,
-    loading: Boolean,
-    progress: Int,
-    error: String,
-    onBack: () -> Unit,
-    onSelectSong: (Song) -> Unit
-) {
-    var filteredSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
-
-    LaunchedEffect(entries, query) {
-        val term = normalizeLyricsSearchText(query)
-        filteredSongs = withContext(Dispatchers.Default) {
-            if (term.isBlank()) {
-                entries.map { it.song }
-            } else {
-                entries.asSequence()
-                    .filter { entry ->
-                        normalizeLyricsSearchText(entry.song.title).contains(term) ||
-                            normalizeLyricsSearchText(entry.song.artist).contains(term) ||
-                            entry.song.code.contains(term, ignoreCase = true) ||
-                            entry.lyrics.contains(term)
-                    }
-                    .map { it.song }
-                    .toList()
-            }
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF171B3D), Navy, Color(0xFF101D36))
-                )
-            )
-            .padding(horizontal = 14.dp)
-    ) {
-        Spacer(Modifier.height(10.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(
-                onClick = onBack,
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
-            ) {
-                Text("‹ BACK", color = Accent, fontWeight = FontWeight.ExtraBold)
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "SONGHUB",
-                    color = Accent,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 4.sp
-                )
-                Text(
-                    "LYRICS SEARCH",
-                    fontSize = 23.sp,
-                    fontWeight = FontWeight.Black,
-                    color = TextWhite
-                )
-            }
-
-            Text(
-                "${entries.size} SONGS",
-                color = Color(0xFFFFC66D),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.ExtraBold
-            )
-        }
-
-        Spacer(Modifier.height(11.dp))
-
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = {
-                Text(
-                    "Type any lyrics, title, artist or song number...",
-                    fontSize = 13.sp,
-                    color = Muted
-                )
-            },
-            singleLine = false,
-            maxLines = 2,
-            shape = RoundedCornerShape(14.dp),
-            textStyle = LocalTextStyle.current.copy(
-                fontSize = 15.sp,
-                color = TextWhite
-            ),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = TextWhite,
-                unfocusedTextColor = TextWhite,
-                focusedBorderColor = Accent,
-                unfocusedBorderColor = Color(0xFF52618D),
-                cursorColor = Accent
-            )
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        when {
-            loading -> {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = Accent)
-                        Spacer(Modifier.height(14.dp))
-                        Text("Reading lyrics database...", color = TextWhite, fontSize = 14.sp)
-                        Spacer(Modifier.height(5.dp))
-                        Text(
-                            if (progress > 0) "$progress lyrics entries checked" else "Preparing song catalog...",
-                            color = Muted,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-
-            error.isNotBlank() -> {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(error, color = Muted, fontSize = 14.sp)
-                }
-            }
-
-            filteredSongs.isEmpty() -> {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("No songs found.", color = Muted, fontSize = 16.sp)
-                }
-            }
-
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(top = 2.dp, bottom = 10.dp)
-                ) {
-                    items(
-                        items = filteredSongs,
-                        key = { it.code },
-                        contentType = { "song" }
-                    ) { song ->
-                        SongCard(
-                            song = song,
-                            onClick = { onSelectSong(song) }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
 // ALPHABET BUTTON
 
 @Composable
@@ -4370,13 +3964,6 @@ private fun ScoreSortButton(
 // CREATOR PAGE — animated neon smoke background
 @Composable
 fun CreatorPage(onBack: () -> Unit) {
-    val creatorContext = LocalContext.current
-    val creatorAvatarBitmap = remember(creatorContext) {
-        runCatching {
-            BitmapFactory.decodeResource(creatorContext.resources, R.drawable.creator_avatar)
-                ?.asImageBitmap()
-        }.getOrNull()
-    }
     var showQrDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -4415,31 +4002,14 @@ fun CreatorPage(onBack: () -> Unit) {
                     .background(Color(0xFF10152B), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                if (creatorAvatarBitmap != null) {
-                    Image(
-                        bitmap = creatorAvatarBitmap,
-                        contentDescription = "Creator profile picture",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(140.dp)
-                            .clip(CircleShape)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(140.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF20294A)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "CA",
-                            color = Color.White,
-                            fontSize = 36.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
-                }
+                Image(
+                    painter = painterResource(R.drawable.creator_avatar),
+                    contentDescription = "Creator profile picture",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(140.dp)
+                        .clip(CircleShape)
+                )
             }
 
             Spacer(Modifier.height(18.dp))
