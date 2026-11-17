@@ -1802,17 +1802,10 @@ fun SongHubApp() {
         } catch (_: Exception) {
         }
 
-        // Refresh the selected SongHub folder and online catalog in the background.
-        // The song list remains visible while these sources are checked.
-        try {
-            val fullLocalSongs = withContext(Dispatchers.IO) {
-                loadSongs(context, folderUri)
-            }
-            if (fullLocalSongs.size > songs.size) {
-                songs = fullLocalSongs
-            }
-        } catch (_: Exception) {
-        }
+        // Do not parse every local catalog again during startup.
+        // loadFastLocalSongs already provided the initial list. Re-reading the
+        // folder, downloaded copy, and bundled JSON together can exceed the
+        // app's 128 MB heap on devices with a large catalog.
 
         try {
             val updatedSongs = withContext(Dispatchers.IO) {
