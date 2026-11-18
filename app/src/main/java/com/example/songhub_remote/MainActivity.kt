@@ -236,56 +236,175 @@ private fun findLyricsByScanning(
     return index[wantedKey].orEmpty()
 }
 
+private class LyricsDatabaseHelper(context: android.content.Context) :
+    android.database.sqlite.SQLiteOpenHelper(context, "songhub_lyrics.db", null, 1) {
+
+    override fun onCreate(db: android.database.sqlite.SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE lyrics (lookup_key TEXT PRIMARY KEY NOT NULL, lyrics_text TEXT NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE TABLE catalog_meta (id INTEGER PRIMARY KEY CHECK(id = 1), file_length INTEGER NOT NULL, last_modified INTEGER NOT NULL)"
+        )
+    }
+
+    override fun onUpgrade(
+        db: android.database.sqlite.SQLiteDatabase,
+        oldVersion: Int,
+        newVersion: Int
+    ) {
+        db.execSQL("DROP TABLE IF EXISTS lyrics")
+        db.execSQL("DROP TABLE IF EXISTS catalog_meta")
+        onCreate(db)
+    }
+
+    fun findLyrics(file: File, song: Song): String {
+        if (!file.exists() || file.length() <= 1_000_000L) return ""
+        val wantedLength = file.length()
+        val wantedModified = file.lastModified()
+
+        synchronized(lyricsDatabaseBuildLock) {
+            val db = writableDatabase
+            var isCurrent = false
+            db.rawQuery(
+                "SELECT file_length, last_modified FROM catalog_meta WHERE id = 1",
+                null
+            ).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    isCurrent = cursor.getLong(0) == wantedLength &&
+                        cursor.getLong(1) == wantedModified
+                }
+            }
+
+            if (!isCurrent) rebuildIndex(db, file, wantedLength, wantedModified)
+
+            val key = lyricsIndexKey(song.title, song.artist)
+            db.rawQuery(
+                "SELECT lyrics_text FROM lyrics WHERE lookup_key = ? LIMIT 1",
+                arrayOf(key)
+            ).use { cursor ->
+                return if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
+            }
+        }
+    }
+
+    private fun rebuildIndex(
+        db: android.database.sqlite.SQLiteDatabase,
+        file: File,
+        fileLength: Long,
+        lastModified: Long
+    ) {
+        db.beginTransaction()
+        try {
+            db.delete("lyrics", null, null)
+            file.inputStream().buffered().use { input ->
+                JsonReader(input.reader()).use { reader ->
+                    reader.isLenient = true
+                    reader.beginArray()
+                    val values = android.content.ContentValues()
+                    while (reader.hasNext()) {
+                        var title = ""
+                        var artist = ""
+                        var lyrics = ""
+                        reader.beginObject()
+                        while (reader.hasNext()) {
+                            when (reader.nextName()) {
+                                "title" -> title = if (reader.peek() == JsonToken.NULL) {
+                                    reader.nextNull()
+                                    ""
+                                } else reader.nextString()
+                                "artist" -> artist = if (reader.peek() == JsonToken.NULL) {
+                                    reader.nextNull()
+                                    ""
+                                } else reader.nextString()
+                                "lyrics" -> {
+                                    lyrics = when (reader.peek()) {
+                                        JsonToken.NULL -> {
+                                            reader.nextNull()
+                                            ""
+                                        }
+                                        JsonToken.STRING -> reader.nextString()
+                                        JsonToken.BEGIN_ARRAY -> {
+                                            val lines = mutableListOf<String>()
+                                            reader.beginArray()
+                                            while (reader.hasNext()) {
+                                                when (reader.peek()) {
+                                                    JsonToken.STRING -> lines.add(reader.nextString())
+                                                    JsonToken.NULL -> {
+                                                        reader.nextNull()
+                                                        lines.add("")
+                                                    }
+                                                    else -> reader.skipValue()
+                                                }
+                                            }
+                                            reader.endArray()
+                                            lines.joinToString("\\n")
+                                        }
+                                        else -> {
+                                            reader.skipValue()
+                                            ""
+                                        }
+                                    }
+                                }
+                                else -> reader.skipValue()
+                            }
+                        }
+                        reader.endObject()
+
+                        if (title.isNotBlank() && lyrics.isNotBlank()) {
+                            values.clear()
+                            values.put("lookup_key", lyricsIndexKey(title, artist))
+                            values.put("lyrics_text", cleanLyricsText(lyrics))
+                            db.insertWithOnConflict(
+                                "lyrics",
+                                null,
+                                values,
+                                android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE
+                            )
+                        }
+                    }
+                    reader.endArray()
+                }
+            }
+
+            val meta = android.content.ContentValues().apply {
+                put("id", 1)
+                put("file_length", fileLength)
+                put("last_modified", lastModified)
+            }
+            db.insertWithOnConflict(
+                "catalog_meta",
+                null,
+                meta,
+                android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE
+            )
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    companion object {
+        private val lyricsDatabaseBuildLock = Any()
+    }
+}
+
 private fun readLyricsForSong(
     context: android.content.Context,
     folderUri: String?,
     song: Song
 ): String {
     val downloadedLyrics = File(context.filesDir, "songs_catalog_with_lyrics.json")
-    val key = lyricsIndexKey(song.title, song.artist)
-
     if (downloadedLyrics.exists() && downloadedLyrics.length() > 1_000_000L) {
-        val current = lyricsIndexSnapshot
-        val index = if (
-            current != null &&
-            current.filePath == downloadedLyrics.absolutePath &&
-            current.fileLength == downloadedLyrics.length() &&
-            current.lastModified == downloadedLyrics.lastModified()
-        ) {
-            current.entries
-        } else {
-            synchronized(lyricsIndexLock) {
-                val latest = lyricsIndexSnapshot
-                if (
-                    latest != null &&
-                    latest.filePath == downloadedLyrics.absolutePath &&
-                    latest.fileLength == downloadedLyrics.length() &&
-                    latest.lastModified == downloadedLyrics.lastModified()
-                ) {
-                    latest.entries
-                } else {
-                    val built = try {
-                        downloadedLyrics.inputStream().use { buildLyricsIndex(it) }
-                    } catch (_: Exception) {
-                        emptyMap()
-                    }
-                    if (built.isNotEmpty()) {
-                        lyricsIndexSnapshot = LyricsIndexSnapshot(
-                            filePath = downloadedLyrics.absolutePath,
-                            fileLength = downloadedLyrics.length(),
-                            lastModified = downloadedLyrics.lastModified(),
-                            entries = built
-                        )
-                    }
-                    built
-                }
+        try {
+            LyricsDatabaseHelper(context).use { database ->
+                val cachedLyrics = database.findLyrics(downloadedLyrics, song)
+                if (cachedLyrics.isNotBlank()) return cachedLyrics
             }
+        } catch (_: Exception) {
+            // Keep the existing catalog scan as a recovery fallback if database indexing fails.
         }
-
-        val cachedLyrics = index[key].orEmpty()
-        if (cachedLyrics.isNotBlank()) return cachedLyrics
     }
-
     return findLyricsByScanning(context, folderUri, song)
 }
 
