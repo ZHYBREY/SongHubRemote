@@ -91,13 +91,13 @@ private fun cleanLyricsText(raw: String): String {
 
 private fun normalizeLyricsMatch(value: String): String {
     return value.lowercase(Locale.ROOT)
-        .replace(Regex("[^\p{L}\p{N}]+"), " ")
+        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
         .trim()
-        .replace(Regex("\s+"), " ")
+        .replace(Regex("\\s+"), " ")
 }
 
 private fun lyricsIndexKey(title: String, artist: String): String =
-    "\${normalizeLyricsMatch(title)}|\${normalizeLyricsMatch(artist)}"
+    "${normalizeLyricsMatch(title)}|${normalizeLyricsMatch(artist)}"
 
 private data class LyricsIndexSnapshot(
     val filePath: String,
@@ -250,7 +250,8 @@ private fun readLyricsForSong(
             }
         }
 
-        return index[key].orEmpty()
+        val cachedLyrics = index[key].orEmpty()
+        if (cachedLyrics.isNotBlank()) return cachedLyrics
     }
 
     return findLyricsByScanning(context, folderUri, song)
