@@ -80,105 +80,111 @@ data class Song(
 
 private fun cleanLyricsText(raw: String): String {
     return raw
-        .replace(Regex("[/\\\\]+"), " ")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
         .lineSequence()
-        .map { it.replace(Regex("[\\t ]+"), " ").trim() }
+        .map { it.replace(Regex("[\t ]+"), " ").trim() }
         .joinToString("\n")
-        .replace(Regex("\\n{3,}"), "\n\n")
+        .replace(Regex("\n{3,}"), "\n\n")
         .trim()
 }
 
 private fun normalizeLyricsMatch(value: String): String {
     return value.lowercase(Locale.ROOT)
-        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+        .replace(Regex("[^\p{L}\p{N}]+"), " ")
         .trim()
-        .replace(Regex("\\s+"), " ")
+        .replace(Regex("\s+"), " ")
 }
 
-private fun readLyricsForSong(
+private fun lyricsIndexKey(title: String, artist: String): String =
+    "\${normalizeLyricsMatch(title)}|\${normalizeLyricsMatch(artist)}"
+
+private data class LyricsIndexSnapshot(
+    val filePath: String,
+    val fileLength: Long,
+    val lastModified: Long,
+    val entries: Map<String, String>
+)
+
+@Volatile
+private var lyricsIndexSnapshot: LyricsIndexSnapshot? = null
+private val lyricsIndexLock = Any()
+
+private fun buildLyricsIndex(input: java.io.InputStream): Map<String, String> {
+    val index = HashMap<String, String>(60_000)
+    JsonReader(input.bufferedReader()).use { reader ->
+        reader.isLenient = true
+        reader.beginArray()
+        while (reader.hasNext()) {
+            var title = ""
+            var artist = ""
+            var lyrics = ""
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "title" -> title = if (reader.peek() == JsonToken.NULL) {
+                        reader.nextNull()
+                        ""
+                    } else reader.nextString()
+                    "artist" -> artist = if (reader.peek() == JsonToken.NULL) {
+                        reader.nextNull()
+                        ""
+                    } else reader.nextString()
+                    "lyrics" -> {
+                        lyrics = when (reader.peek()) {
+                            JsonToken.NULL -> {
+                                reader.nextNull()
+                                ""
+                            }
+                            JsonToken.STRING -> reader.nextString()
+                            JsonToken.BEGIN_ARRAY -> {
+                                val lyricLines = mutableListOf<String>()
+                                reader.beginArray()
+                                while (reader.hasNext()) {
+                                    when (reader.peek()) {
+                                        JsonToken.STRING -> lyricLines.add(reader.nextString())
+                                        JsonToken.NULL -> {
+                                            reader.nextNull()
+                                            lyricLines.add("")
+                                        }
+                                        else -> reader.skipValue()
+                                    }
+                                }
+                                reader.endArray()
+                                lyricLines.joinToString("\n")
+                            }
+                            else -> {
+                                reader.skipValue()
+                                ""
+                            }
+                        }
+                    }
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
+
+            if (title.isNotBlank() && lyrics.isNotBlank()) {
+                index[lyricsIndexKey(title, artist)] = cleanLyricsText(lyrics)
+            }
+        }
+        reader.endArray()
+    }
+    return index
+}
+
+private fun findLyricsByScanning(
     context: android.content.Context,
     folderUri: String?,
     song: Song
 ): String {
-    val wantedTitle = normalizeLyricsMatch(song.title)
-    val wantedArtist = normalizeLyricsMatch(song.artist)
+    val wantedKey = lyricsIndexKey(song.title, song.artist)
 
     fun scan(input: java.io.InputStream): String {
-        JsonReader(input.bufferedReader()).use { reader ->
-            reader.isLenient = true
-            reader.beginArray()
-            while (reader.hasNext()) {
-                var title = ""
-                var artist = ""
-                var lyrics = ""
-                reader.beginObject()
-                while (reader.hasNext()) {
-                    when (reader.nextName()) {
-                        "title" -> title = if (reader.peek() == JsonToken.NULL) {
-                            reader.nextNull()
-                            ""
-                        } else reader.nextString()
-                        "artist" -> artist = if (reader.peek() == JsonToken.NULL) {
-                            reader.nextNull()
-                            ""
-                        } else reader.nextString()
-                        "lyrics" -> {
-                            lyrics = when (reader.peek()) {
-                                JsonToken.NULL -> {
-                                    reader.nextNull()
-                                    ""
-                                }
-                                JsonToken.STRING -> reader.nextString()
-                                JsonToken.BEGIN_ARRAY -> {
-                                    val lyricLines = mutableListOf<String>()
-                                    reader.beginArray()
-                                    while (reader.hasNext()) {
-                                        when (reader.peek()) {
-                                            JsonToken.STRING -> lyricLines.add(reader.nextString())
-                                            JsonToken.NULL -> reader.nextNull()
-                                            else -> reader.skipValue()
-                                        }
-                                    }
-                                    reader.endArray()
-                                    lyricLines.joinToString("\n")
-                                }
-                                else -> {
-                                    reader.skipValue()
-                                    ""
-                                }
-                            }
-                        }
-                        else -> reader.skipValue()
-                    }
-                }
-                reader.endObject()
-
-                val titleMatches = normalizeLyricsMatch(title) == wantedTitle
-                val artistMatches = if (wantedArtist.isBlank()) {
-                    normalizeLyricsMatch(artist).isBlank()
-                } else {
-                    normalizeLyricsMatch(artist) == wantedArtist
-                }
-                if (titleMatches && artistMatches && lyrics.isNotBlank()) {
-                    return cleanLyricsText(lyrics)
-                }
-            }
-            reader.endArray()
-        }
-        return ""
+        val index = buildLyricsIndex(input)
+        return index[wantedKey].orEmpty()
     }
 
-    // Automatically downloaded full lyrics catalog (kept in private app storage).
-    val downloadedLyrics = File(context.filesDir, "songs_catalog_with_lyrics.json")
-    if (downloadedLyrics.exists()) {
-        try {
-            val found = downloadedLyrics.inputStream().use { scan(it) }
-            if (found.isNotBlank()) return found
-        } catch (_: Exception) {
-        }
-    }
-
-    // Match by title and artist, not the old MIDI code. The MIDI files were renumbered.
     val assetNames = listOf("songs_catalog_with_lyrics.json", "lyrics_catalog.json")
     for (name in assetNames) {
         try {
@@ -202,6 +208,52 @@ private fun readLyricsForSong(
     }
 
     return ""
+}
+
+private fun readLyricsForSong(
+    context: android.content.Context,
+    folderUri: String?,
+    song: Song
+): String {
+    val downloadedLyrics = File(context.filesDir, "songs_catalog_with_lyrics.json")
+    val key = lyricsIndexKey(song.title, song.artist)
+
+    if (downloadedLyrics.exists() && downloadedLyrics.length() > 1_000_000L) {
+        val current = lyricsIndexSnapshot
+        val index = if (
+            current != null &&
+            current.filePath == downloadedLyrics.absolutePath &&
+            current.fileLength == downloadedLyrics.length() &&
+            current.lastModified == downloadedLyrics.lastModified()
+        ) {
+            current.entries
+        } else {
+            synchronized(lyricsIndexLock) {
+                val latest = lyricsIndexSnapshot
+                if (
+                    latest != null &&
+                    latest.filePath == downloadedLyrics.absolutePath &&
+                    latest.fileLength == downloadedLyrics.length() &&
+                    latest.lastModified == downloadedLyrics.lastModified()
+                ) {
+                    latest.entries
+                } else {
+                    val built = downloadedLyrics.inputStream().use { buildLyricsIndex(it) }
+                    lyricsIndexSnapshot = LyricsIndexSnapshot(
+                        filePath = downloadedLyrics.absolutePath,
+                        fileLength = downloadedLyrics.length(),
+                        lastModified = downloadedLyrics.lastModified(),
+                        entries = built
+                    )
+                    built
+                }
+            }
+        }
+
+        return index[key].orEmpty()
+    }
+
+    return findLyricsByScanning(context, folderUri, song)
 }
 
 data class ScoreEntry(
