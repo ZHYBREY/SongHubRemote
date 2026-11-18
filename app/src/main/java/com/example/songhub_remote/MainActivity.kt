@@ -459,6 +459,75 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
     }
 }
 
+private fun scanDownloadedCatalogForSong(file: File, song: Song): String {
+    if (!file.exists() || file.length() <= 1_000_000L) return ""
+    val wantedCode = song.code.trim()
+    val wantedTitleArtist = lyricsIndexKey(song.title, song.artist)
+    var titleArtistMatch = ""
+
+    file.inputStream().buffered(256 * 1024).use { input ->
+        JsonReader(input.reader()).use { reader ->
+            reader.isLenient = true
+            reader.beginArray()
+            while (reader.hasNext()) {
+                var code = ""
+                var title = ""
+                var artist = ""
+                var lyrics = ""
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "code" -> code = if (reader.peek() == JsonToken.NULL) {
+                            reader.nextNull(); ""
+                        } else reader.nextString()
+                        "title" -> title = if (reader.peek() == JsonToken.NULL) {
+                            reader.nextNull(); ""
+                        } else reader.nextString()
+                        "artist" -> artist = if (reader.peek() == JsonToken.NULL) {
+                            reader.nextNull(); ""
+                        } else reader.nextString()
+                        "lyrics" -> {
+                            lyrics = when (reader.peek()) {
+                                JsonToken.NULL -> { reader.nextNull(); "" }
+                                JsonToken.STRING -> reader.nextString()
+                                JsonToken.BEGIN_ARRAY -> {
+                                    val lines = ArrayList<String>()
+                                    reader.beginArray()
+                                    while (reader.hasNext()) {
+                                        when (reader.peek()) {
+                                            JsonToken.STRING -> lines.add(reader.nextString())
+                                            JsonToken.NULL -> { reader.nextNull(); lines.add("") }
+                                            else -> reader.skipValue()
+                                        }
+                                    }
+                                    reader.endArray()
+                                    lines.joinToString("\\n")
+                                }
+                                else -> { reader.skipValue(); "" }
+                            }
+                        }
+                        else -> reader.skipValue()
+                    }
+                }
+                reader.endObject()
+
+                if (lyrics.isNotBlank()) {
+                    if (wantedCode.isNotBlank() && code.trim() == wantedCode) {
+                        return cleanLyricsText(lyrics)
+                    }
+                    if (titleArtistMatch.isBlank() && title.isNotBlank() &&
+                        lyricsIndexKey(title, artist) == wantedTitleArtist
+                    ) {
+                        titleArtistMatch = cleanLyricsText(lyrics)
+                    }
+                }
+            }
+            reader.endArray()
+        }
+    }
+    return titleArtistMatch
+}
+
 private fun readLyricsForSong(
     context: android.content.Context,
     folderUri: String?,
@@ -471,17 +540,14 @@ private fun readLyricsForSong(
     val downloadedLyrics = File(context.filesDir, "songs_catalog_with_lyrics.json")
     val result = if (downloadedLyrics.exists() && downloadedLyrics.length() > 1_000_000L) {
         try {
-            LyricsDatabaseHelper(context).use { database ->
-                // The JSON catalog is indexed once and kept in SQLite.
-                // Song lookups read the saved index, not the full JSON catalog.
-                database.findLyrics(downloadedLyrics, song)
-            }
+            // Do not wait for a full-catalog SQLite rebuild. Stream the catalog and
+            // stop as soon as this song's lyrics are found.
+            scanDownloadedCatalogForSong(downloadedLyrics, song)
         } catch (e: Exception) {
-            android.util.Log.e("SongHubLyrics", "SQLite lookup failed for ${song.code}: ${e.message}", e)
+            android.util.Log.e("SongHubLyrics", "Direct catalog lookup failed for ${song.code}: ${e.message}", e)
             ""
         }
     } else {
-        // Only use the older scan fallback when no downloaded catalog exists.
         findLyricsByScanning(context, folderUri, song)
     }
 
@@ -1966,18 +2032,8 @@ fun SongHubApp() {
             }
             message = "Loaded ${songs.size} songs."
 
-            // Prepare the persistent lyrics index before enabling the song list.
-            // This moves the one-time catalog scan to app startup, so the first
-            // lyrics button press can query the ready SQLite index immediately.
-            withContext(Dispatchers.IO) {
-                val lyricsFile = File(context.filesDir, "songs_catalog_with_lyrics.json")
-                if (lyricsFile.exists() && lyricsFile.length() > 1_000_000L) {
-                    try {
-                        LyricsDatabaseHelper(context).use { it.prepareIndex(lyricsFile) }
-                    } catch (_: Exception) {
-                    }
-                }
-            }
+            // Lyrics are loaded on demand from the downloaded catalog.
+            // Never block app startup by rebuilding a full-catalog SQLite index.
         } catch (e: Exception) {
             message = "Local catalog error: ${e.message}"
         } finally {
