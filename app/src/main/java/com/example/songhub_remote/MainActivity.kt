@@ -1849,6 +1849,15 @@ fun SongHubApp() {
                     updateLyricsCatalog(context)
                 }
                 val savedCatalog = File(context.filesDir, "songs_catalog_with_lyrics.json")
+                // Rebuild the local search database off the UI thread after a catalog refresh.
+                scope.launch(Dispatchers.IO) {
+                    if (savedCatalog.exists() && savedCatalog.length() > 1_000_000L) {
+                        try {
+                            LyricsDatabaseHelper(context).use { it.prepareIndex(savedCatalog) }
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
                 pendingLyricsCatalogUpdate = false
                 prefs.edit().putBoolean(PREF_PENDING_LYRICS_CATALOG_UPDATE, false).apply()
                 lyricsCatalogUpdateMessage = if (savedCatalog.exists()) {
