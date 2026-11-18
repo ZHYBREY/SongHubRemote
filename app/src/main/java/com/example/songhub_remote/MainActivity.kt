@@ -78,14 +78,17 @@ data class Song(
     val artist: String
 )
 
+private val lyricWhitespaceRegex = Regex("[\t ]+")
+private val lyricBlankLinesRegex = Regex("\n{3,}")
+
 private fun cleanLyricsText(raw: String): String {
     return raw
         .replace("\r\n", "\n")
         .replace("\r", "\n")
         .lineSequence()
-        .map { it.replace(Regex("[\t ]+"), " ").trim() }
+        .map { lyricWhitespaceRegex.replace(it, " ").trim() }
         .joinToString("\n")
-        .replace(Regex("\n{3,}"), "\n\n")
+        .let { lyricBlankLinesRegex.replace(it, "\n\n") }
         .trim()
 }
 
@@ -344,6 +347,8 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
                     val insertLyrics = db.compileStatement(
                         "INSERT OR REPLACE INTO lyrics (lookup_key, lyrics_text) VALUES (?, ?)"
                     )
+                    var recordsRead = 0
+                    var lyricsIndexed = 0
                     while (reader.hasNext()) {
                         var code = ""
                         var title = ""
@@ -397,9 +402,17 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
                             }
                         }
                         reader.endObject()
+                        recordsRead++
+                        if (recordsRead % 5000 == 0) {
+                            android.util.Log.i(
+                                "SongHubLyrics",
+                                "Index progress: records=$recordsRead; indexed=$lyricsIndexed"
+                            )
+                        }
 
                         if (lyrics.isNotBlank()) {
                             val cleaned = cleanLyricsText(lyrics)
+                            lyricsIndexed++
                             if (code.isNotBlank()) {
                                 insertLyrics.clearBindings()
                                 insertLyrics.bindString(1, "code:${code.trim()}")
@@ -415,6 +428,10 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
                         }
                     }
                     reader.endArray()
+                    android.util.Log.i(
+                        "SongHubLyrics",
+                        "Index parsing complete: records=$recordsRead; indexed=$lyricsIndexed"
+                    )
                 }
             }
 
