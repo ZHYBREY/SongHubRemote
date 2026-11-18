@@ -773,13 +773,6 @@ private fun updateOnlineCatalog(
 // DOWNLOAD OR REFRESH THE FULL LYRICS CATALOG FROM THE LATEST CATALOG RELEASE
 
 private fun updateLyricsCatalog(context: android.content.Context) {
-    // If the full catalog is bundled in app/src/main/assets, use it and skip network download.
-    try {
-        context.assets.open("songs_catalog_with_lyrics.json").use { return }
-    } catch (_: Exception) {
-        // No bundled catalog; keep the existing automatic download fallback.
-    }
-
     val prefs = context.getSharedPreferences("songhub_prefs", android.content.Context.MODE_PRIVATE)
     val target = File(context.filesDir, "songs_catalog_with_lyrics.json")
     val temp = File(context.filesDir, "songs_catalog_with_lyrics.json.tmp")
@@ -997,8 +990,7 @@ private fun loadFastLocalSongs(
     val cachedFile = File(context.filesDir, "songs_catalog.json")
 
     if (cachedFile.exists()) {
-        try {
-            val cachedSongs = parseSongs(
+        try {            val cachedSongs = parseSongs(
                 cachedFile.readText(Charsets.UTF_8)
             )
             if (cachedSongs.isNotEmpty()) {
@@ -1190,6 +1182,8 @@ fun SongHubApp() {
     var lyricsPreviewSong by remember { mutableStateOf<Song?>(null) }
     var lyricsPreviewText by remember { mutableStateOf("") }
     var lyricsLoading by remember { mutableStateOf(false) }
+    var updatingLyricsCatalog by remember { mutableStateOf(false) }
+    var lyricsCatalogUpdateMessage by remember { mutableStateOf("") }
 
     var folderUri by remember {
         mutableStateOf(prefs.getString("catalog_folder", null))
@@ -1573,6 +1567,29 @@ fun SongHubApp() {
 
             } finally {
                 loading = false
+            }
+        }
+    }
+
+    // MANUAL LYRICS CATALOG REFRESH
+    fun refreshLyricsCatalog() {
+        scope.launch {
+            updatingLyricsCatalog = true
+            lyricsCatalogUpdateMessage = "Checking GitHub for lyrics updates..."
+            try {
+                withContext(Dispatchers.IO) {
+                    updateLyricsCatalog(context)
+                }
+                val savedCatalog = File(context.filesDir, "songs_catalog_with_lyrics.json")
+                lyricsCatalogUpdateMessage = if (savedCatalog.exists()) {
+                    "Lyrics catalog updated / already up to date."
+                } else {
+                    "Lyrics catalog is available in the app."
+                }
+            } catch (e: Exception) {
+                lyricsCatalogUpdateMessage = "Lyrics update failed: ${e.message}"
+            } finally {
+                updatingLyricsCatalog = false
             }
         }
     }
@@ -1997,7 +2014,6 @@ fun SongHubApp() {
         connectionStatus = "Not connected"
         message = "Disconnected from PC."
     }
-
     // SEND PC COMMAND
 
     fun sendCommand(
@@ -2864,92 +2880,80 @@ fun SongHubApp() {
                         fontWeight = FontWeight.ExtraBold
                     )
 
-                    Button(
-                        onClick = {
-                            folderPicker.launch(null)
-                        },
+                    Text(
+                        "UPDATE CATALOG",
+                        color = Color(0xFFB58BFF),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF34466F)
-                        )
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("📁  CHOOSE DOCUMENTS FOLDER")
-                    }
-
-                    Button(
-                        onClick = {
-
-                            if (folderUri == null) {
-                                message = "Pumili muna ng SongHub folder."
-                            } else {
-                                jsonPicker.launch(
-                                    arrayOf(
-                                        "application/json",
-                                        "text/*",
-                                        "*/*"
-                                    )
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF9168F5)
-                        )
-                    ) {
-                        Text("＋  IMPORT / REPLACE JSON")
-                    }
-
-                    // CATALOG UPDATE BUTTON WITH NEW SONG COUNT
-
-                    Button(
-                        onClick = {
-                            refreshCatalog()
-                        },
-                        enabled = !loading,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Accent,
-                            contentColor = Navy
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                if (loading) {
-                                    "CHECKING CATALOG..."
-                                } else {
-                                    "↻  UPDATE SONG CATALOG"
-                                },
-                                fontWeight = FontWeight.ExtraBold
+                        Button(
+                            onClick = { refreshCatalog() },
+                            enabled = !loading,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Accent,
+                                contentColor = Navy
                             )
-
-                            if (!loading && pendingNewSongCount > 0) {
-                                Spacer(Modifier.width(9.dp))
-
-                                Box(
-                                    modifier = Modifier
-                                        .background(
-                                            AlertRed,
-                                            RoundedCornerShape(50)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    if (loading) "UPDATING..." else "SONG",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 12.sp
+                                )
+                                if (!loading && pendingNewSongCount > 0) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .background(AlertRed, RoundedCornerShape(50))
+                                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            pendingNewSongCount.toString(),
+                                            color = Color.White,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Black
                                         )
-                                        .padding(
-                                            horizontal = 8.dp,
-                                            vertical = 3.dp
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        pendingNewSongCount.toString(),
-                                        color = Color.White,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Black
-                                    )
+                                    }
                                 }
                             }
                         }
+
+                        Button(
+                            onClick = { refreshLyricsCatalog() },
+                            enabled = !updatingLyricsCatalog,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF9168F5),
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(
+                                if (updatingLyricsCatalog) "UPDATING..." else "LYRICS",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    if (lyricsCatalogUpdateMessage.isNotBlank()) {
+                        Text(
+                            lyricsCatalogUpdateMessage,
+                            color = if (lyricsCatalogUpdateMessage.contains("updated", ignoreCase = true) ||
+                                lyricsCatalogUpdateMessage.contains("up to date", ignoreCase = true)) Accent else Muted,
+                            fontSize = 11.sp
+                        )
                     }
 
                     if (pendingNewSongCount > 0) {
@@ -2997,8 +3001,7 @@ fun SongHubApp() {
                         ) {
                             Text(
                                 if (checkingAppUpdate) "CHECKING APP UPDATE..." else
-                                    if (appUpdateStatus.startsWith("Unable")) "RETRY APP UPDATE CHECK" else "CHECK APP UPDATE",
-                                fontWeight = FontWeight.Bold
+                                    if (appUpdateStatus.startsWith("Unable")) "RETRY APP UPDATE CHECK" else "CHECK APP UPDATE",                                fontWeight = FontWeight.Bold
                             )
                         }
                     } else {
@@ -3997,8 +4000,7 @@ fun CreatorPage(onBack: () -> Unit) {
         )
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+            horizontalAlignment = Alignment.CenterHorizontally        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
