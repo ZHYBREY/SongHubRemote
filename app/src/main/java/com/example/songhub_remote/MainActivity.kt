@@ -341,7 +341,7 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
                                                 }
                                             }
                                             reader.endArray()
-                                            lines.joinToString("\\n")
+                                            lines.joinToString("\n")
                                         }
                                         else -> {
                                             reader.skipValue()
