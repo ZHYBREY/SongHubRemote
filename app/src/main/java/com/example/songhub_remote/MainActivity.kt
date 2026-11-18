@@ -1033,7 +1033,8 @@ private fun loadFastLocalSongs(
                 return cachedSongs
             }
         } catch (_: Exception) {
-            // Fall back to the bundled catalog if the saved copy is invalid.        }
+            // Fall back to the bundled catalog if the saved copy is invalid.
+        }
     }
 
     val bundledJson = context.assets
