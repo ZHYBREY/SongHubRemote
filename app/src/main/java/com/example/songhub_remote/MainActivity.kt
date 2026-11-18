@@ -258,8 +258,8 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
         onCreate(db)
     }
 
-    fun findLyrics(file: File, song: Song): String {
-        if (!file.exists() || file.length() <= 1_000_000L) return ""
+    fun prepareIndex(file: File) {
+        if (!file.exists() || file.length() <= 1_000_000L) return
         val wantedLength = file.length()
         val wantedModified = file.lastModified()
 
@@ -275,16 +275,19 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
                         cursor.getLong(1) == wantedModified
                 }
             }
-
             if (!isCurrent) rebuildIndex(db, file, wantedLength, wantedModified)
+        }
+    }
 
-            val key = lyricsIndexKey(song.title, song.artist)
-            db.rawQuery(
-                "SELECT lyrics_text FROM lyrics WHERE lookup_key = ? LIMIT 1",
-                arrayOf(key)
-            ).use { cursor ->
-                return if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
-            }
+    fun findLyrics(file: File, song: Song): String {
+        if (!file.exists() || file.length() <= 1_000_000L) return ""
+        prepareIndex(file)
+        val key = lyricsIndexKey(song.title, song.artist)
+        readableDatabase.rawQuery(
+            "SELECT lyrics_text FROM lyrics WHERE lookup_key = ? LIMIT 1",
+            arrayOf(key)
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
         }
     }
 
@@ -1871,6 +1874,17 @@ fun SongHubApp() {
                 loadFastLocalSongs(context)
             }
             message = "Loaded ${songs.size} songs."
+
+            // Build the persistent lyrics index in the background while the song list is usable.
+            scope.launch(Dispatchers.IO) {
+                val lyricsFile = File(context.filesDir, "songs_catalog_with_lyrics.json")
+                if (lyricsFile.exists() && lyricsFile.length() > 1_000_000L) {
+                    try {
+                        LyricsDatabaseHelper(context).use { it.prepareIndex(lyricsFile) }
+                    } catch (_: Exception) {
+                    }
+                }
+            }
         } catch (e: Exception) {
             message = "Local catalog error: ${e.message}"
         } finally {
