@@ -205,6 +205,18 @@ private fun findLyricsByScanning(
 
                 // Build fallback catalogs once per app process instead of rescanning
                 // the full JSON files every time a song has no match in the main catalog.
+                // The downloaded catalog is the primary source; the packaged assets
+                // and selected folder remain fallbacks.
+                val downloadedCatalog = File(context.filesDir, "songs_catalog_with_lyrics.json")
+                if (downloadedCatalog.exists() && downloadedCatalog.length() > 1_000_000L) {
+                    try {
+                        downloadedCatalog.inputStream().use { input ->
+                            built.putAll(buildLyricsIndex(input))
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+
                 val assetNames = listOf("songs_catalog_with_lyrics.json", "lyrics_catalog.json")
                 for (name in assetNames) {
                     try {
@@ -240,7 +252,7 @@ private fun findLyricsByScanning(
 }
 
 private class LyricsDatabaseHelper(context: android.content.Context) :
-    android.database.sqlite.SQLiteOpenHelper(context, "songhub_lyrics.db", null, 1) {
+    android.database.sqlite.SQLiteOpenHelper(context, "songhub_lyrics.db", null, 2) {
 
     override fun onCreate(db: android.database.sqlite.SQLiteDatabase) {
         db.execSQL(
@@ -284,7 +296,8 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
 
     fun findLyrics(file: File, song: Song): String {
         if (!file.exists() || file.length() <= 1_000_000L) return ""
-        prepareIndex(file)
+        // Read an existing index immediately; do not trigger a full catalog rebuild
+        // while the user is waiting for one song's lyrics.
         val key = lyricsIndexKey(song.title, song.artist)
         readableDatabase.rawQuery(
             "SELECT lyrics_text FROM lyrics WHERE lookup_key = ? LIMIT 1",
