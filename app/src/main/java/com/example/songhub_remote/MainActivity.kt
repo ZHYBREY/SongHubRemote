@@ -162,7 +162,7 @@ private fun buildLyricsIndex(input: java.io.InputStream): Map<String, String> {
                                     }
                                 }
                                 reader.endArray()
-                                lyricLines.joinToString("\n")
+                                lyricLines.joinToString(" ")
                             }
                             else -> {
                                 reader.skipValue()
@@ -390,7 +390,7 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
                                                 }
                                             }
                                             reader.endArray()
-                                            lines.joinToString("\n")
+                                            lines.joinToString(" ")
                                         }
                                         else -> {
                                             reader.skipValue()
@@ -501,7 +501,7 @@ private fun scanDownloadedCatalogForSong(file: File, song: Song): String {
                                         }
                                     }
                                     reader.endArray()
-                                    lines.joinToString("\\n")
+                                    lines.joinToString(" ")
                                 }
                                 else -> { reader.skipValue(); "" }
                             }
