@@ -272,8 +272,14 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
         if (!file.exists() || file.length() <= 1_000_000L) return
         val wantedLength = file.length()
         val wantedModified = file.lastModified()
+        val signature = "${file.absolutePath}:$wantedLength:$wantedModified"
+
+        // Once this catalog has been indexed in this app process, do not
+        // reopen or scan the JSON file for every song selection.
+        if (indexedCatalogSignature == signature) return
 
         synchronized(lyricsDatabaseBuildLock) {
+            if (indexedCatalogSignature == signature) return
             val db = writableDatabase
             var isCurrent = false
             db.rawQuery(
@@ -286,6 +292,7 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
                 }
             }
             if (!isCurrent) rebuildIndex(db, file, wantedLength, wantedModified)
+            indexedCatalogSignature = signature
         }
     }
 
@@ -425,6 +432,8 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
 
     companion object {
         private val lyricsDatabaseBuildLock = Any()
+        @Volatile
+        private var indexedCatalogSignature: String? = null
     }
 }
 
@@ -440,15 +449,15 @@ private fun readLyricsForSong(
     val result = if (downloadedLyrics.exists() && downloadedLyrics.length() > 1_000_000L) {
         try {
             LyricsDatabaseHelper(context).use { database ->
+                // The JSON catalog is indexed once and kept in SQLite.
+                // Song lookups read the saved index, not the full JSON catalog.
                 database.findLyrics(downloadedLyrics, song)
-            }.ifBlank {
-                findLyricsByScanning(context, folderUri, song)
             }
         } catch (_: Exception) {
-            // Keep the existing catalog scan as a recovery fallback if database indexing fails.
-            findLyricsByScanning(context, folderUri, song)
+            ""
         }
     } else {
+        // Only use the older scan fallback when no downloaded catalog exists.
         findLyricsByScanning(context, folderUri, song)
     }
 
