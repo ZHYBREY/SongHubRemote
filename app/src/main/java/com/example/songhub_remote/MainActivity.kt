@@ -106,6 +106,9 @@ private data class LyricsIndexSnapshot(
     val entries: Map<String, String>
 )
 
+// Keep lyrics already opened in memory so reopening the same song is immediate.
+private val loadedLyricsCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
 @Volatile
 private var lyricsIndexSnapshot: LyricsIndexSnapshot? = null
 private val lyricsIndexLock = Any()
@@ -397,18 +400,27 @@ private fun readLyricsForSong(
     folderUri: String?,
     song: Song
 ): String {
+    val cacheKey = lyricsIndexKey(song.title, song.artist)
+    loadedLyricsCache[cacheKey]?.let { return it }
+
     val downloadedLyrics = File(context.filesDir, "songs_catalog_with_lyrics.json")
-    if (downloadedLyrics.exists() && downloadedLyrics.length() > 1_000_000L) {
+    val result = if (downloadedLyrics.exists() && downloadedLyrics.length() > 1_000_000L) {
         try {
             LyricsDatabaseHelper(context).use { database ->
-                val cachedLyrics = database.findLyrics(downloadedLyrics, song)
-                if (cachedLyrics.isNotBlank()) return cachedLyrics
+                database.findLyrics(downloadedLyrics, song)
+            }.ifBlank {
+                findLyricsByScanning(context, folderUri, song)
             }
         } catch (_: Exception) {
             // Keep the existing catalog scan as a recovery fallback if database indexing fails.
+            findLyricsByScanning(context, folderUri, song)
         }
+    } else {
+        findLyricsByScanning(context, folderUri, song)
     }
-    return findLyricsByScanning(context, folderUri, song)
+
+    if (result.isNotBlank()) loadedLyricsCache[cacheKey] = result
+    return result
 }
 
 data class ScoreEntry(
@@ -3628,10 +3640,16 @@ fun SongHubApp() {
                             selectedSong = null
                             showLyricsDialog = true
                             scope.launch {
-                                lyricsPreviewText = withContext(Dispatchers.IO) {
-                                    readLyricsForSong(context, folderUri, song)
+                                try {
+                                    lyricsPreviewText = withContext(Dispatchers.IO) {
+                                        readLyricsForSong(context, folderUri, song)
+                                    }
+                                } catch (e: Exception) {
+                                    if (e is kotlinx.coroutines.CancellationException) throw e
+                                    lyricsPreviewText = "Hindi ma-load ang lyrics. Pakisubukang buksan ulit."
+                                } finally {
+                                    lyricsLoading = false
                                 }
-                                lyricsLoading = false
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
