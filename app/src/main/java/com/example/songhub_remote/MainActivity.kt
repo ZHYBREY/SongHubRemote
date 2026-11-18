@@ -122,10 +122,32 @@ private fun readLyricsForSong(
                             reader.nextNull()
                             ""
                         } else reader.nextString()
-                        "lyrics" -> lyrics = if (reader.peek() == JsonToken.NULL) {
-                            reader.nextNull()
-                            ""
-                        } else reader.nextString()
+                        "lyrics" -> {
+                            lyrics = when (reader.peek()) {
+                                JsonToken.NULL -> {
+                                    reader.nextNull()
+                                    ""
+                                }
+                                JsonToken.STRING -> reader.nextString()
+                                JsonToken.BEGIN_ARRAY -> {
+                                    val lyricLines = mutableListOf<String>()
+                                    reader.beginArray()
+                                    while (reader.hasNext()) {
+                                        when (reader.peek()) {
+                                            JsonToken.STRING -> lyricLines.add(reader.nextString())
+                                            JsonToken.NULL -> reader.nextNull()
+                                            else -> reader.skipValue()
+                                        }
+                                    }
+                                    reader.endArray()
+                                    lyricLines.joinToString("\n")
+                                }
+                                else -> {
+                                    reader.skipValue()
+                                    ""
+                                }
+                            }
+                        }
                         else -> reader.skipValue()
                     }
                 }
