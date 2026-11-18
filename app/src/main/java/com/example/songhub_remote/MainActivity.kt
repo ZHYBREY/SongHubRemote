@@ -173,41 +173,67 @@ private fun buildLyricsIndex(input: java.io.InputStream): Map<String, String> {
     return index
 }
 
+private data class FallbackLyricsIndexSnapshot(
+    val folderUri: String?,
+    val entries: Map<String, String>
+)
+
+@Volatile
+private var fallbackLyricsIndexSnapshot: FallbackLyricsIndexSnapshot? = null
+private val fallbackLyricsIndexLock = Any()
+
 private fun findLyricsByScanning(
     context: android.content.Context,
     folderUri: String?,
     song: Song
 ): String {
     val wantedKey = lyricsIndexKey(song.title, song.artist)
+    val current = fallbackLyricsIndexSnapshot
 
-    fun scan(input: java.io.InputStream): String {
-        val index = buildLyricsIndex(input)
-        return index[wantedKey].orEmpty()
-    }
+    val index = if (current != null && current.folderUri == folderUri) {
+        current.entries
+    } else {
+        synchronized(fallbackLyricsIndexLock) {
+            val latest = fallbackLyricsIndexSnapshot
+            if (latest != null && latest.folderUri == folderUri) {
+                latest.entries
+            } else {
+                val built = HashMap<String, String>(60_000)
 
-    val assetNames = listOf("songs_catalog_with_lyrics.json", "lyrics_catalog.json")
-    for (name in assetNames) {
-        try {
-            val found = context.assets.open(name).use { scan(it) }
-            if (found.isNotBlank()) return found
-        } catch (_: Exception) {
-        }
-    }
+                // Build fallback catalogs once per app process instead of rescanning
+                // the full JSON files every time a song has no match in the main catalog.
+                val assetNames = listOf("songs_catalog_with_lyrics.json", "lyrics_catalog.json")
+                for (name in assetNames) {
+                    try {
+                        context.assets.open(name).use { input ->
+                            built.putAll(buildLyricsIndex(input))
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
 
-    if (!folderUri.isNullOrBlank()) {
-        try {
-            val folder = getCatalogDirectory(context, Uri.parse(folderUri))
-            val file = folder.findFile("songs_catalog_with_lyrics.json")
-                ?: folder.findFile("lyrics_catalog.json")
-            if (file != null && file.exists()) {
-                val found = context.contentResolver.openInputStream(file.uri)?.use { scan(it) }.orEmpty()
-                if (found.isNotBlank()) return found
+                if (!folderUri.isNullOrBlank()) {
+                    try {
+                        val folder = getCatalogDirectory(context, Uri.parse(folderUri))
+                        val file = folder.findFile("songs_catalog_with_lyrics.json")
+                            ?: folder.findFile("lyrics_catalog.json")
+                        if (file != null && file.exists()) {
+                            context.contentResolver.openInputStream(file.uri)?.use { input ->
+                                built.putAll(buildLyricsIndex(input))
+                            }
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+
+                val snapshot = FallbackLyricsIndexSnapshot(folderUri, built)
+                fallbackLyricsIndexSnapshot = snapshot
+                snapshot.entries
             }
-        } catch (_: Exception) {
         }
     }
 
-    return ""
+    return index[wantedKey].orEmpty()
 }
 
 private fun readLyricsForSong(
