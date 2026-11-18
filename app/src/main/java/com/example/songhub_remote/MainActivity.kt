@@ -328,7 +328,12 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
                 JsonReader(input.reader()).use { reader ->
                     reader.isLenient = true
                     reader.beginArray()
-                    val values = android.content.ContentValues()
+                    // Reuse one compiled SQLite statement instead of allocating
+                    // ContentValues for every catalog entry. This greatly reduces
+                    // the one-time indexing overhead for the large lyrics catalog.
+                    val insertLyrics = db.compileStatement(
+                        "INSERT OR REPLACE INTO lyrics (lookup_key, lyrics_text) VALUES (?, ?)"
+                    )
                     while (reader.hasNext()) {
                         var code = ""
                         var title = ""
@@ -386,26 +391,16 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
                         if (lyrics.isNotBlank()) {
                             val cleaned = cleanLyricsText(lyrics)
                             if (code.isNotBlank()) {
-                                values.clear()
-                                values.put("lookup_key", "code:${code.trim()}")
-                                values.put("lyrics_text", cleaned)
-                                db.insertWithOnConflict(
-                                    "lyrics",
-                                    null,
-                                    values,
-                                    android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE
-                                )
+                                insertLyrics.clearBindings()
+                                insertLyrics.bindString(1, "code:${code.trim()}")
+                                insertLyrics.bindString(2, cleaned)
+                                insertLyrics.executeInsert()
                             }
                             if (title.isNotBlank()) {
-                                values.clear()
-                                values.put("lookup_key", lyricsIndexKey(title, artist))
-                                values.put("lyrics_text", cleaned)
-                                db.insertWithOnConflict(
-                                    "lyrics",
-                                    null,
-                                    values,
-                                    android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE
-                                )
+                                insertLyrics.clearBindings()
+                                insertLyrics.bindString(1, lyricsIndexKey(title, artist))
+                                insertLyrics.bindString(2, cleaned)
+                                insertLyrics.executeInsert()
                             }
                         }
                     }
