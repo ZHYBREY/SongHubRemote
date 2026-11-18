@@ -269,7 +269,11 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
     }
 
     fun prepareIndex(file: File) {
-        if (!file.exists() || file.length() <= 1_000_000L) return
+        val startedAt = android.os.SystemClock.elapsedRealtime()
+        if (!file.exists() || file.length() <= 1_000_000L) {
+            android.util.Log.w("SongHubLyrics", "Index skipped: catalog missing or too small")
+            return
+        }
         val wantedLength = file.length()
         val wantedModified = file.lastModified()
         val signature = "${file.absolutePath}:$wantedLength:$wantedModified"
@@ -291,8 +295,14 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
                         cursor.getLong(1) == wantedModified
                 }
             }
-            if (!isCurrent) rebuildIndex(db, file, wantedLength, wantedModified)
+            if (!isCurrent) {
+                android.util.Log.i("SongHubLyrics", "SQLite index rebuild started; bytes=$wantedLength")
+                rebuildIndex(db, file, wantedLength, wantedModified)
+            } else {
+                android.util.Log.i("SongHubLyrics", "SQLite index already current")
+            }
             indexedCatalogSignature = signature
+            android.util.Log.i("SongHubLyrics", "Index preparation finished in ${android.os.SystemClock.elapsedRealtime() - startedAt}ms")
         }
     }
 
@@ -440,6 +450,7 @@ private fun readLyricsForSong(
     val cacheKey = lyricsIndexKey(song.title, song.artist)
     loadedLyricsCache[cacheKey]?.let { return it }
 
+    val startedAt = android.os.SystemClock.elapsedRealtime()
     val downloadedLyrics = File(context.filesDir, "songs_catalog_with_lyrics.json")
     val result = if (downloadedLyrics.exists() && downloadedLyrics.length() > 1_000_000L) {
         try {
@@ -448,7 +459,8 @@ private fun readLyricsForSong(
                 // Song lookups read the saved index, not the full JSON catalog.
                 database.findLyrics(downloadedLyrics, song)
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.e("SongHubLyrics", "SQLite lookup failed for ${song.code}: ${e.message}", e)
             ""
         }
     } else {
@@ -457,6 +469,10 @@ private fun readLyricsForSong(
     }
 
     if (result.isNotBlank()) loadedLyricsCache[cacheKey] = result
+    android.util.Log.i(
+        "SongHubLyrics",
+        "Lookup finished in ${android.os.SystemClock.elapsedRealtime() - startedAt}ms; code=${song.code}; found=${result.isNotBlank()}; chars=${result.length}"
+    )
     return result
 }
 
