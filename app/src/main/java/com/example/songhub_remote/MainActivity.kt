@@ -3672,20 +3672,31 @@ fun SongHubApp() {
                     OutlinedButton(
                         onClick = {
                             lyricsPreviewSong = song
-                            lyricsPreviewText = ""
-                            lyricsLoading = true
                             selectedSong = null
                             showLyricsDialog = true
-                            scope.launch {
-                                try {
-                                    lyricsPreviewText = withContext(Dispatchers.IO) {
-                                        readLyricsForSong(context, folderUri, song)
+
+                            // Show previously opened lyrics immediately on return.
+                            val cachedLyrics = loadedLyricsCache[
+                                lyricsIndexKey(song.title, song.artist)
+                            ]
+                            if (!cachedLyrics.isNullOrBlank()) {
+                                lyricsPreviewText = cachedLyrics
+                                lyricsLoading = false
+                            } else {
+                                lyricsPreviewText = ""
+                                lyricsLoading = true
+                                scope.launch {
+                                    try {
+                                        val loaded = withContext(Dispatchers.IO) {
+                                            readLyricsForSong(context, folderUri, song)
+                                        }
+                                        lyricsPreviewText = loaded
+                                    } catch (e: Exception) {
+                                        if (e is kotlinx.coroutines.CancellationException) throw e
+                                        lyricsPreviewText = "Hindi ma-load ang lyrics. Pakisubukang buksan ulit."
+                                    } finally {
+                                        lyricsLoading = false
                                     }
-                                } catch (e: Exception) {
-                                    if (e is kotlinx.coroutines.CancellationException) throw e
-                                    lyricsPreviewText = "Hindi ma-load ang lyrics. Pakisubukang buksan ulit."
-                                } finally {
-                                    lyricsLoading = false
                                 }
                             }
                         },
