@@ -1933,8 +1933,10 @@ fun SongHubApp() {
             }
             message = "Loaded ${songs.size} songs."
 
-            // Build the persistent lyrics index in the background while the song list is usable.
-            scope.launch(Dispatchers.IO) {
+            // Prepare the persistent lyrics index before enabling the song list.
+            // This moves the one-time catalog scan to app startup, so the first
+            // lyrics button press can query the ready SQLite index immediately.
+            withContext(Dispatchers.IO) {
                 val lyricsFile = File(context.filesDir, "songs_catalog_with_lyrics.json")
                 if (lyricsFile.exists() && lyricsFile.length() > 1_000_000L) {
                     try {
