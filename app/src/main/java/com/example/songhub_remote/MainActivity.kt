@@ -210,6 +210,8 @@ private const val LYRICS_CATALOG_URL =
     "https://github.com/ZHYBREY/SongHub-Catalog/releases/latest/download/songs_catalog_with_lyrics.1.json"
 
 private const val PREF_LYRICS_CATALOG_ETAG = "lyrics_catalog_etag"
+private const val PREF_LYRICS_CATALOG_LENGTH = "lyrics_catalog_length"
+private const val PREF_PENDING_LYRICS_CATALOG_UPDATE = "pending_lyrics_catalog_update"
 
 private const val APP_UPDATE_URL =
     "https://raw.githubusercontent.com/ZHYBREY/SongHub-Catalog/main/app_update.json"
@@ -887,12 +889,46 @@ private fun updateLyricsCatalog(context: android.content.Context) {
             temp.delete()
         }
 
-        if (remoteEtag != null) {
-            prefs.edit().putString(PREF_LYRICS_CATALOG_ETAG, remoteEtag).apply()
-        }
+        prefs.edit().apply {
+            if (remoteEtag != null) putString(PREF_LYRICS_CATALOG_ETAG, remoteEtag)
+            if (remoteLength > 0L) putLong(PREF_LYRICS_CATALOG_LENGTH, remoteLength)
+        }.apply()
     } catch (e: Exception) {
         temp.delete()
         throw e
+    }
+}
+
+// CHECK WHETHER THE GITHUB LYRICS FILE IS NEWER THAN THE DOWNLOADED COPY
+
+private fun hasLyricsCatalogUpdate(context: android.content.Context): Boolean {
+    val prefs = context.getSharedPreferences("songhub_prefs", android.content.Context.MODE_PRIVATE)
+    val target = File(context.filesDir, "songs_catalog_with_lyrics.json")
+    if (!target.exists() || target.length() < 1_000_000L) return true
+
+    val request = Request.Builder()
+        .url("$LYRICS_CATALOG_URL?t=${System.currentTimeMillis()}")
+        .header("User-Agent", "SongHub-Remote")
+        .header("Cache-Control", "no-cache, no-store")
+        .head()
+        .build()
+
+    val metadata = lyricsHttpClient.newCall(request).execute().use { response ->
+        if (!response.isSuccessful) throw Exception("Lyrics catalog check failed: HTTP ${response.code}")
+        Pair(
+            response.header("ETag"),
+            response.body?.contentLength()
+                ?: response.header("Content-Length")?.toLongOrNull()
+                ?: -1L
+        )
+    }
+
+    val savedEtag = prefs.getString(PREF_LYRICS_CATALOG_ETAG, null)
+    val savedLength = prefs.getLong(PREF_LYRICS_CATALOG_LENGTH, -1L)
+    return when {
+        metadata.first != null -> metadata.first != savedEtag
+        metadata.second > 0L -> metadata.second != savedLength && metadata.second != target.length()
+        else -> false
     }
 }
 
@@ -1183,6 +1219,9 @@ fun SongHubApp() {
     var lyricsLoading by remember { mutableStateOf(false) }
     var updatingLyricsCatalog by remember { mutableStateOf(false) }
     var lyricsCatalogUpdateMessage by remember { mutableStateOf("") }
+    var pendingLyricsCatalogUpdate by remember {
+        mutableStateOf(prefs.getBoolean(PREF_PENDING_LYRICS_CATALOG_UPDATE, false))
+    }
 
     var folderUri by remember {
         mutableStateOf(prefs.getString("catalog_folder", null))
@@ -1580,6 +1619,8 @@ fun SongHubApp() {
                     updateLyricsCatalog(context)
                 }
                 val savedCatalog = File(context.filesDir, "songs_catalog_with_lyrics.json")
+                pendingLyricsCatalogUpdate = false
+                prefs.edit().putBoolean(PREF_PENDING_LYRICS_CATALOG_UPDATE, false).apply()
                 lyricsCatalogUpdateMessage = if (savedCatalog.exists()) {
                     "Lyrics catalog updated / already up to date."
                 } else {
@@ -1663,14 +1704,16 @@ fun SongHubApp() {
             }
         }
 
-        // Download the lyrics database once, then only when the GitHub asset changes.
-        // This runs in the background and does not block the song list.
+        // Check the GitHub lyrics file version without downloading it automatically.
+        // Keep NEW visible until the user taps the LYRICS update button.
         try {
-            withContext(Dispatchers.IO) {
-                updateLyricsCatalog(context)
+            val hasUpdate = withContext(Dispatchers.IO) {
+                hasLyricsCatalogUpdate(context)
             }
+            pendingLyricsCatalogUpdate = hasUpdate
+            prefs.edit().putBoolean(PREF_PENDING_LYRICS_CATALOG_UPDATE, hasUpdate).apply()
         } catch (_: Exception) {
-            // Keep the previous downloaded lyrics catalog available when offline.
+            // Preserve the last known indicator when GitHub is unavailable.
         }
     }
 
@@ -2303,7 +2346,7 @@ fun SongHubApp() {
                         fontSize = 27.sp
                     )
 
-                    if (pendingAppVersionCode > 0 || pendingShareQrVersion > 0) {
+                    if (pendingAppVersionCode > 0 || pendingShareQrVersion > 0 || pendingNewSongCount > 0 || pendingLyricsCatalogUpdate) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
@@ -2910,19 +2953,19 @@ fun SongHubApp() {
                                 )
                                 if (!loading && pendingNewSongCount > 0) {
                                     Spacer(Modifier.width(6.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .background(AlertRed, RoundedCornerShape(50))
-                                            .padding(horizontal = 7.dp, vertical = 2.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            pendingNewSongCount.toString(),
-                                            color = Color.White,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Black
-                                        )
-                                    }
+                                    Text(
+                                        "NEW",
+                                        color = Color(0xFF62A8FF),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        pendingNewSongCount.toString(),
+                                        color = Color(0xFF62A8FF),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                         }
@@ -2937,11 +2980,25 @@ fun SongHubApp() {
                                 contentColor = Color.White
                             )
                         ) {
-                            Text(
-                                if (updatingLyricsCatalog) "UPDATING..." else "LYRICS",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 12.sp
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    if (updatingLyricsCatalog) "UPDATING..." else "LYRICS",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 12.sp
+                                )
+                                if (!updatingLyricsCatalog && pendingLyricsCatalogUpdate) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "NEW",
+                                        color = Color(0xFFFF667A),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
+                            }
                         }
                     }
 
