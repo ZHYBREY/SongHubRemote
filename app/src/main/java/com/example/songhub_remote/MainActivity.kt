@@ -119,17 +119,12 @@ private fun buildLyricsIndex(input: java.io.InputStream): Map<String, String> {
         reader.isLenient = true
         reader.beginArray()
         while (reader.hasNext()) {
-            var code = ""
             var title = ""
             var artist = ""
             var lyrics = ""
             reader.beginObject()
             while (reader.hasNext()) {
                 when (reader.nextName()) {
-                    "code" -> code = if (reader.peek() == JsonToken.NULL) {
-                        reader.nextNull()
-                        ""
-                    } else reader.nextString()
                     "title" -> title = if (reader.peek() == JsonToken.NULL) {
                         reader.nextNull()
                         ""
@@ -172,10 +167,8 @@ private fun buildLyricsIndex(input: java.io.InputStream): Map<String, String> {
             }
             reader.endObject()
 
-            if (lyrics.isNotBlank()) {
-                val cleaned = cleanLyricsText(lyrics)
-                if (code.isNotBlank()) index["code:${code.trim()}"] = cleaned
-                if (title.isNotBlank()) index[lyricsIndexKey(title, artist)] = cleaned
+            if (title.isNotBlank() && lyrics.isNotBlank()) {
+                index[lyricsIndexKey(title, artist)] = cleanLyricsText(lyrics)
             }
         }
         reader.endArray()
@@ -243,11 +236,11 @@ private fun findLyricsByScanning(
         }
     }
 
-    return index["code:${song.code.trim()}"] ?: index[wantedKey].orEmpty()
+    return index[wantedKey].orEmpty()
 }
 
 private class LyricsDatabaseHelper(context: android.content.Context) :
-    android.database.sqlite.SQLiteOpenHelper(context, "songhub_lyrics.db", null, 2) {
+    android.database.sqlite.SQLiteOpenHelper(context, "songhub_lyrics.db", null, 1) {
 
     override fun onCreate(db: android.database.sqlite.SQLiteDatabase) {
         db.execSQL(
@@ -292,17 +285,10 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
     fun findLyrics(file: File, song: Song): String {
         if (!file.exists() || file.length() <= 1_000_000L) return ""
         prepareIndex(file)
-        val codeKey = "code:${song.code.trim()}"
+        val key = lyricsIndexKey(song.title, song.artist)
         readableDatabase.rawQuery(
             "SELECT lyrics_text FROM lyrics WHERE lookup_key = ? LIMIT 1",
-            arrayOf(codeKey)
-        ).use { cursor ->
-            if (cursor.moveToFirst()) return cursor.getString(0).orEmpty()
-        }
-        val titleKey = lyricsIndexKey(song.title, song.artist)
-        readableDatabase.rawQuery(
-            "SELECT lyrics_text FROM lyrics WHERE lookup_key = ? LIMIT 1",
-            arrayOf(titleKey)
+            arrayOf(key)
         ).use { cursor ->
             return if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
         }
@@ -323,17 +309,12 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
                     reader.beginArray()
                     val values = android.content.ContentValues()
                     while (reader.hasNext()) {
-                        var code = ""
                         var title = ""
                         var artist = ""
                         var lyrics = ""
                         reader.beginObject()
                         while (reader.hasNext()) {
                             when (reader.nextName()) {
-                                "code" -> code = if (reader.peek() == JsonToken.NULL) {
-                                    reader.nextNull()
-                                    ""
-                                } else reader.nextString()
                                 "title" -> title = if (reader.peek() == JsonToken.NULL) {
                                     reader.nextNull()
                                     ""
@@ -376,30 +357,16 @@ private class LyricsDatabaseHelper(context: android.content.Context) :
                         }
                         reader.endObject()
 
-                        if (lyrics.isNotBlank()) {
-                            val cleaned = cleanLyricsText(lyrics)
-                            if (code.isNotBlank()) {
-                                values.clear()
-                                values.put("lookup_key", "code:${code.trim()}")
-                                values.put("lyrics_text", cleaned)
-                                db.insertWithOnConflict(
-                                    "lyrics",
-                                    null,
-                                    values,
-                                    android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE
-                                )
-                            }
-                            if (title.isNotBlank()) {
-                                values.clear()
-                                values.put("lookup_key", lyricsIndexKey(title, artist))
-                                values.put("lyrics_text", cleaned)
-                                db.insertWithOnConflict(
-                                    "lyrics",
-                                    null,
-                                    values,
-                                    android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE
-                                )
-                            }
+                        if (title.isNotBlank() && lyrics.isNotBlank()) {
+                            values.clear()
+                            values.put("lookup_key", lyricsIndexKey(title, artist))
+                            values.put("lyrics_text", cleanLyricsText(lyrics))
+                            db.insertWithOnConflict(
+                                "lyrics",
+                                null,
+                                values,
+                                android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE
+                            )
                         }
                     }
                     reader.endArray()
