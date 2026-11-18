@@ -4080,21 +4080,14 @@ fun CreatorPage(onBack: () -> Unit) {
                     .background(Color(0xFF10152B), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                // Safe creator avatar fallback: avoid crashing if the drawable cannot be decoded.
-                Box(
+                Image(
+                    painter = painterResource(R.drawable.creator_avatar_new),
+                    contentDescription = "Creator profile picture",
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(140.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF202B49)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "C",
-                        color = Color.White,
-                        fontSize = 64.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                }
+                )
             }
 
             Spacer(Modifier.height(18.dp))
