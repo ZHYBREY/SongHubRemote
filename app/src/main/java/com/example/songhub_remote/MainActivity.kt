@@ -238,13 +238,19 @@ private fun readLyricsForSong(
                 ) {
                     latest.entries
                 } else {
-                    val built = downloadedLyrics.inputStream().use { buildLyricsIndex(it) }
-                    lyricsIndexSnapshot = LyricsIndexSnapshot(
-                        filePath = downloadedLyrics.absolutePath,
-                        fileLength = downloadedLyrics.length(),
-                        lastModified = downloadedLyrics.lastModified(),
-                        entries = built
-                    )
+                    val built = try {
+                        downloadedLyrics.inputStream().use { buildLyricsIndex(it) }
+                    } catch (_: Exception) {
+                        emptyMap()
+                    }
+                    if (built.isNotEmpty()) {
+                        lyricsIndexSnapshot = LyricsIndexSnapshot(
+                            filePath = downloadedLyrics.absolutePath,
+                            fileLength = downloadedLyrics.length(),
+                            lastModified = downloadedLyrics.lastModified(),
+                            entries = built
+                        )
+                    }
                     built
                 }
             }
