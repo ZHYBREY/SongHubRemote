@@ -80,6 +80,11 @@ data class Song(
 
 private fun cleanLyricsText(raw: String): String {
     return raw
+        // Decode newline markers that may arrive double-escaped in catalog entries.
+        .replace("\\r\\n", "\n")
+        .replace("\\n", "\n")
+        .replace("\\r", "\n")
+        .replace("\\/", "/")
         .replace("\r\n", "\n")
         .replace("\r", "\n")
         .lineSequence()
