@@ -146,6 +146,16 @@ private fun readLyricsForSong(
         return ""
     }
 
+    // Automatically downloaded full lyrics catalog (kept in private app storage).
+    val downloadedLyrics = File(context.filesDir, "songs_catalog_with_lyrics.json")
+    if (downloadedLyrics.exists()) {
+        try {
+            val found = downloadedLyrics.inputStream().use { scan(it) }
+            if (found.isNotBlank()) return found
+        } catch (_: Exception) {
+        }
+    }
+
     // Match by title and artist, not the old MIDI code. The MIDI files were renumbered.
     val assetNames = listOf("songs_catalog_with_lyrics.json", "lyrics_catalog.json")
     for (name in assetNames) {
@@ -165,16 +175,6 @@ private fun readLyricsForSong(
                 val found = context.contentResolver.openInputStream(file.uri)?.use { scan(it) }.orEmpty()
                 if (found.isNotBlank()) return found
             }
-        } catch (_: Exception) {
-        }
-    }
-
-    // Automatically downloaded full lyrics catalog (kept in private app storage).
-    val downloadedLyrics = File(context.filesDir, "songs_catalog_with_lyrics.json")
-    if (downloadedLyrics.exists()) {
-        try {
-            val found = downloadedLyrics.inputStream().use { scan(it) }
-            if (found.isNotBlank()) return found
         } catch (_: Exception) {
         }
     }
@@ -997,8 +997,7 @@ private fun loadFastLocalSongs(
                 return cachedSongs
             }
         } catch (_: Exception) {
-            // Fall back to the bundled catalog if the saved copy is invalid.
-        }
+            // Fall back to the bundled catalog if the saved copy is invalid.        }
     }
 
     val bundledJson = context.assets
@@ -1997,8 +1996,7 @@ fun SongHubApp() {
                 ) {
                     activity.runOnUiThread {
                         connected = false
-                        connectionStatus =
-                            "Connection failed: ${t.message ?: "Unknown error"}"
+                        connectionStatus =                            "Connection failed: ${t.message ?: "Unknown error"}"
                     }
                 }
             }
@@ -2997,8 +2995,7 @@ fun SongHubApp() {
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF34466F)
-                            )
-                        ) {
+                            )                        ) {
                             Text(
                                 if (checkingAppUpdate) "CHECKING APP UPDATE..." else
                                     if (appUpdateStatus.startsWith("Unable")) "RETRY APP UPDATE CHECK" else "CHECK APP UPDATE",                                fontWeight = FontWeight.Bold
@@ -3997,8 +3994,7 @@ fun CreatorPage(onBack: () -> Unit) {
                     listOf(Color(0xFF090D24), Color(0xFF17113A), Color(0xFF071C32))
                 )
             )
-        )
-        Column(
+        )        Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally        ) {
             Row(
