@@ -4045,16 +4045,17 @@ private fun ScoreSortButton(
 fun CreatorPage(onBack: () -> Unit) {
     var showQrDialog by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF090D24), Color(0xFF17113A), Color(0xFF071C32))
-                )
+    Box(
+        modifier = Modifier.fillMaxSize().background(
+            Brush.verticalGradient(
+                listOf(Color(0xFF090D24), Color(0xFF17113A), Color(0xFF071C32))
             )
-        )        Column(
+        )
+    ) {
+        Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally        ) {
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
