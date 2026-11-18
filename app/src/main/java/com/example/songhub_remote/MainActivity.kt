@@ -245,7 +245,7 @@ private fun findLyricsByScanning(
 }
 
 private class LyricsDatabaseHelper(context: android.content.Context) :
-    android.database.sqlite.SQLiteOpenHelper(context, "songhub_lyrics.db", null, 1) {
+    android.database.sqlite.SQLiteOpenHelper(context, "songhub_lyrics.db", null, 2) {
 
     override fun onCreate(db: android.database.sqlite.SQLiteDatabase) {
         db.execSQL(
