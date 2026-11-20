@@ -594,7 +594,7 @@ private const val APP_UPDATE_URL =
     "https://raw.githubusercontent.com/ZHYBREY/SongHub-Catalog/main/app_update.json"
 
 private const val SHARE_CODE_URL =
-    "https://github.com/ZHYBREY/SongHubRemote/releases/download/2.2/app-debug.apk"
+    "https://github.com/ZHYBREY/SongHubRemote/releases/latest/download/app-debug.apk"
 
 private const val SHARE_QR_MANIFEST_URL =
     "https://raw.githubusercontent.com/ZHYBREY/SongHub-Catalog/main/share_qr.json"
