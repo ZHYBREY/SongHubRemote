@@ -78,6 +78,14 @@ data class Song(
     val artist: String
 )
 
+private data class SongSearchEntry(
+    val song: Song,
+    val normalizedTitle: String,
+    val normalizedArtist: String,
+    val normalizedCode: String,
+    val firstLetter: String?
+)
+
 private val lyricWhitespaceRegex = Regex("[\t ]+")
 private val lyricBlankLinesRegex = Regex("\n{3,}")
 
@@ -1617,8 +1625,23 @@ fun SongHubApp() {
     var showAlphabet by remember { mutableStateOf(false) }
     var selectedLetter by remember { mutableStateOf<String?>(null) }
 
-    val sortedSongs = remember(songs) {
-        sortSongsAlphabetically(songs)
+    // Prepare the alphabetical search index off the UI thread.
+    // Cache normalized fields so typing does not normalize 55k songs repeatedly.
+    var searchIndex by remember { mutableStateOf<List<SongSearchEntry>>(emptyList()) }
+
+    LaunchedEffect(songs) {
+        searchIndex = withContext(Dispatchers.Default) {
+            sortSongsAlphabetically(songs).map { song ->
+                SongSearchEntry(
+                    song = song,
+                    normalizedTitle = normalizeSongSearchText(song.title),
+                    normalizedArtist = normalizeSongSearchText(song.artist),
+                    normalizedCode = normalizeSongSearchText(song.code),
+                    firstLetter = song.title.trim().firstOrNull()
+                        ?.uppercaseChar()?.toString()
+                )
+            }
+        }
     }
 
     var searchText by remember { mutableStateOf("") }
@@ -2994,49 +3017,34 @@ fun SongHubApp() {
 
             LaunchedEffect(
                 searchText,
-                sortedSongs,
+                searchIndex,
                 selectedLetter
             ) {
-
                 val term = normalizeSongSearchText(searchText)
 
                 filteredSongs = withContext(Dispatchers.Default) {
-
-                    sortedSongs
-                        .mapIndexedNotNull { index, song ->
-
-                            val title = normalizeSongSearchText(song.title)
-                            val artist = normalizeSongSearchText(song.artist)
-                            val code = normalizeSongSearchText(song.code)
-
-                            val firstLetter = song.title.trim()
-                                .firstOrNull()
-                                ?.uppercaseChar()
-                                ?.toString()
-
+                    searchIndex
+                        .mapIndexedNotNull { index, entry ->
                             val matchesLetter =
                                 selectedLetter == null ||
-                                        firstLetter == selectedLetter
+                                    entry.firstLetter == selectedLetter
 
                             if (!matchesLetter) {
                                 return@mapIndexedNotNull null
                             }
 
                             val rank = when {
-
                                 term.isBlank() -> 0
-                                title == term -> 0
-                                title.startsWith(term) -> 1
-                                title.contains(" $term") -> 2
-                                title.contains(term) -> 3
-                                artist.startsWith(term) -> 4
-                                artist.contains(term) -> 5
-                                code.contains(term) -> 6
-
+                                entry.normalizedTitle == term -> 0
+                                entry.normalizedTitle.startsWith(term) -> 1
+                                entry.normalizedTitle.contains(term) -> 3
+                                entry.normalizedArtist.startsWith(term) -> 4
+                                entry.normalizedArtist.contains(term) -> 5
+                                entry.normalizedCode.contains(term) -> 6
                                 else -> return@mapIndexedNotNull null
                             }
 
-                            Triple(rank, index, song)
+                            Triple(rank, index, entry.song)
                         }
                         .sortedWith(
                             compareBy<Triple<Int, Int, Song>> { it.first }
