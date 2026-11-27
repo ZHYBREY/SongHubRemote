@@ -99,6 +99,11 @@ private fun normalizeLyricsMatch(value: String): String {
         .replace(Regex("\\s+"), " ")
 }
 
+ // Search-only normalization: ignore spaces and punctuation without changing
+ // the existing SQLite lyrics index keys.
+private fun normalizeSongSearchText(value: String): String =
+    value.lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }
+
 private fun lyricsIndexKey(title: String, artist: String): String =
     "${normalizeLyricsMatch(title)}|${normalizeLyricsMatch(artist)}"
 
@@ -2993,22 +2998,16 @@ fun SongHubApp() {
                 selectedLetter
             ) {
 
-                val term = searchText.trim()
-                    .lowercase(Locale.ROOT)
+                val term = normalizeSongSearchText(searchText)
 
                 filteredSongs = withContext(Dispatchers.Default) {
 
                     sortedSongs
                         .mapIndexedNotNull { index, song ->
 
-                            val title = song.title.trim()
-                                .lowercase(Locale.ROOT)
-
-                            val artist = song.artist
-                                .lowercase(Locale.ROOT)
-
-                            val code = song.code
-                                .lowercase(Locale.ROOT)
+                            val title = normalizeSongSearchText(song.title)
+                            val artist = normalizeSongSearchText(song.artist)
+                            val code = normalizeSongSearchText(song.code)
 
                             val firstLetter = song.title.trim()
                                 .firstOrNull()
